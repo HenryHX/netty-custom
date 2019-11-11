@@ -22,6 +22,7 @@ import java.util.concurrent.TimeoutException;
 
 /**
  * Abstract {@link Future} implementation which does not allow for cancellation.
+ * 抽象的Future实现，不允许取消。
  *
  * @param <V>
  */
@@ -29,6 +30,7 @@ public abstract class AbstractFuture<V> implements Future<V> {
 
     @Override
     public V get() throws InterruptedException, ExecutionException {
+        // 阻塞直到异步任务完成
         await();
 
         Throwable cause = cause();

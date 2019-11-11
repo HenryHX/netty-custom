@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * The result of an asynchronous {@link Channel} I/O operation.
- * ChannelFuture为一个异步Channel IO操作结果
+ * ChannelFuture是netty中异步Future,作用是用来保存Channel异步操作的结果
  *
  * All I/O operations in Netty are asynchronous.  It means any I/O calls will
  * return immediately with no guarantee that the requested I/O operation has
@@ -195,21 +195,21 @@ import java.util.concurrent.TimeUnit;
  * </pre>
  *
  * 管道任务，管道是netty的核心概念，他将每个请求都当做一个管道，用户可以使用管道进行通讯读取数据等操作，
- * 再讲完结构后会讲解管道的概念，这里暂时将ChannelFuture当做一个定义，这里可以看出他继承与Future但是返回的类型确实Void,
- * Void类仅仅是一个站位标志类无任何作用，暂且当做当前的Future并没有结果可以返回，再讲他实现的时候将会细讲。
+ * 这里暂时将ChannelFuture当做一个定义，这里可以看出他继承与Future但是返回的类型是Void,
+ * Void类仅仅是一个占位标志类无任何作用，暂且当做当前的Future并没有结果可以返回，再讲它实现的时候将会细讲。
  */
 public interface ChannelFuture extends Future<Void> {
 
     /**
      * Returns a channel where the I/O operation associated with this
      * future takes place.
-     * 返回当前的操作管道
+     * 返回一个通道，在该通道中，将执行与此future关联的I/O操作。
      */
     Channel channel();
 
     // 下面@Override标记的方法都是对父类的重写替换，这里可能有人会有疑问为什么父类定义返回的是Future而这里则是ChannelFuture，
-    // 这是因为java在1.5后支持方法重写返回类型可以是子类这话可能比较绕，
-    // 那么就按现在的代码来看在Future中返回的是Future那么在重写的还是允许修改为Future的子类，下面方法的定义具体查看上篇文章。
+    // 这是因为java在1.5后支持方法重写返回类型可以是子类。这话可能比较绕，
+    // 那么就按现在的代码来看在Future中返回的是Future，那么在重写的还是允许修改为Future的子类。
     @Override
     ChannelFuture addListener(GenericFutureListener<? extends Future<? super Void>> listener);
 
@@ -237,6 +237,7 @@ public interface ChannelFuture extends Future<Void> {
     /**
      * Returns {@code true} if this {@link ChannelFuture} is a void future and so not allow to call any of the
      * following methods:
+     * 如果通道异步结果为void，返回ture，因此不允许调用下面的任何方法：
      * <ul>
      *     <li>{@link #addListener(GenericFutureListener)}</li>
      *     <li>{@link #addListeners(GenericFutureListener[])}</li>

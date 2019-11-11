@@ -19,10 +19,13 @@ package io.netty.util.concurrent;
 public interface GenericProgressiveFutureListener<F extends ProgressiveFuture<?>> extends GenericFutureListener<F> {
     /**
      * Invoked when the operation has progressed.
+     * 在操作有进展时调用。
      *
      * @param progress the progress of the operation so far (cumulative)
+     *                 到目前为止的操作进度(累计)
      * @param total the number that signifies the end of the operation when {@code progress} reaches at it.
      *              {@code -1} if the end of operation is unknown.
+     *              当进程到达时，表示操作结束的数字。-1如果操作的结束是未知的。
      */
     void operationProgressed(F future, long progress, long total) throws Exception;
 }

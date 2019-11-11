@@ -20,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * A skeletal {@link Future} implementation which represents a {@link Future} which has been completed already.
+ * 一个Future实现的框架，它代表一个已经完成的Future。
  */
 public abstract class CompleteFuture<V> extends AbstractFuture<V> {
 
@@ -29,6 +30,7 @@ public abstract class CompleteFuture<V> extends AbstractFuture<V> {
      * Creates a new instance.
      *
      * @param executor the {@link EventExecutor} associated with this future
+     *                 与这个future关联的EventExecutor
      */
     protected CompleteFuture(EventExecutor executor) {
         this.executor = executor;

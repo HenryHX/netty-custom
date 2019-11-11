@@ -97,6 +97,7 @@ public interface Future<V> extends java.util.concurrent.Future<V> {
      * failed.
      *
      * 等待异步任务，直到操作完成，如果操作失败，则重新抛出失败的原因。
+     * 与await的区别在于，sync方法在异步操作失败时抛出异常
      */
     Future<V> sync() throws InterruptedException;
 
@@ -171,6 +172,7 @@ public interface Future<V> extends java.util.concurrent.Future<V> {
 
     /**
      * Return the result without blocking. If the future is not done yet this will return {@code null}.
+     * 非阻塞地返回异步结果，如果尚未完成返回null
      *
      * As it is possible that a {@code null} value is used to mark the future as successful you also need to check
      * if the future is really done with {@link #isDone()} and not rely on the returned {@code null} value.

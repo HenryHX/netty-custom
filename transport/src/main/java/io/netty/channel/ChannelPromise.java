@@ -63,6 +63,7 @@ public interface ChannelPromise extends ChannelFuture, Promise<Void> {
 
     /**
      * Returns a new {@link ChannelPromise} if {@link #isVoid()} returns {@code true} otherwise itself.
+     * 如果isVoid返回true，则返回一个新的ChannelPromise，否则返回this
      */
     ChannelPromise unvoid();
 }
