@@ -65,6 +65,11 @@ public final class InternalThreadLocalMap extends UnpaddedInternalThreadLocalMap
         return slowThreadLocalMap.get();
     }
 
+    /**
+     * 主要是根据当前线程是否是 Netty 的 FastThreadLocalThread 来调用不同的方法，
+     * 一个是 fast 的，一个 是 slow 的（不是 Netty 的线程就是 slow 的）。
+     * @return
+     */
     public static InternalThreadLocalMap get() {
         Thread thread = Thread.currentThread();
         if (thread instanceof FastThreadLocalThread) {
@@ -74,6 +79,10 @@ public final class InternalThreadLocalMap extends UnpaddedInternalThreadLocalMap
         }
     }
 
+    /**
+     * 获取当前线程的 InternalThreadLocalMap，如果没有，就创建一个。
+     * @param thread 当前线程
+     */
     private static InternalThreadLocalMap fastGet(FastThreadLocalThread thread) {
         InternalThreadLocalMap threadLocalMap = thread.threadLocalMap();
         if (threadLocalMap == null) {
@@ -82,6 +91,13 @@ public final class InternalThreadLocalMap extends UnpaddedInternalThreadLocalMap
         return threadLocalMap;
     }
 
+    /**
+     * 首先使用 JDK 的 ThreadLocal 获取一个 Netty 的 InternalThreadLocalMap，
+     * 如果没有就创建一个，并将这个 InternalThreadLocalMap 设置到 JDK 的 ThreadLocal 中，然后返回这个 InternalThreadLocalMap。
+     * 从这里可以看出，为了提高性能，Netty 还是避免使用了JDK 的 threadLocalMap，
+     * 他的方式是曲线救国：在JDK 的 threadLocal 中设置 Netty 的 InternalThreadLocalMap ，
+     * 然后，这个 InternalThreadLocalMap 中设置 Netty 的 FastThreadLcoal。
+     */
     private static InternalThreadLocalMap slowGet() {
         ThreadLocal<InternalThreadLocalMap> slowThreadLocalMap = UnpaddedInternalThreadLocalMap.slowThreadLocalMap;
         InternalThreadLocalMap ret = slowThreadLocalMap.get();
@@ -291,6 +307,8 @@ public final class InternalThreadLocalMap extends UnpaddedInternalThreadLocalMap
 
     /**
      * @return {@code true} if and only if a new thread-local variable has been created
+     * 当且仅当创建了新的线程局部变量时，返回true， 换句话说
+     * 扩容了，或者没扩容，但插入的对象没有替换掉别的对象，也就是原槽位是空对象。
      */
     public boolean setIndexedVariable(int index, Object value) {
         Object[] lookup = indexedVariables;
@@ -304,7 +322,15 @@ public final class InternalThreadLocalMap extends UnpaddedInternalThreadLocalMap
         }
     }
 
+    /**
+     * 扩大索引并设置值
+     * HashMap 中也有这样的代码{@link java.util.HashMap#tableSizeFor(int)}
+     */
     private void expandIndexedVariableTableAndSet(int index, Object value) {
+        // 这段代码的作用就是按原来的容量扩容2倍。并且保证结果是2的幂次方。
+        // 这里 Netty 的做法和 HashMap 一样，按照原来的容量扩容到最近的 2 的幂次方大小，
+        // 比如原来32，就扩容到64，然后，将原来数组的内容填充到新数组中，剩余的填充空对象，然后将新数组赋值给成员变量 indexedVariables。
+        // 完成了一次扩容。
         Object[] oldArray = indexedVariables;
         final int oldCapacity = oldArray.length;
         int newCapacity = index;

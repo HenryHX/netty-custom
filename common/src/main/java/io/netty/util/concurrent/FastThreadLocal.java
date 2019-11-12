@@ -94,17 +94,26 @@ public class FastThreadLocal<V> {
         InternalThreadLocalMap.destroy();
     }
 
+    /**
+     * 这个方法的目的是将 FastThreadLocal 对象保存到一个 Set 中，静态方法 removeAll 就需要使用到这个 Set，
+     * 可以快速的删除线程 Map 里的所有 FTL 对应的 Value。
+     * 如果不使用 Set，那么就需要遍历 InternalThreadLocalMap，性能不高。
+     */
     @SuppressWarnings("unchecked")
     private static void addToVariablesToRemove(InternalThreadLocalMap threadLocalMap, FastThreadLocal<?> variable) {
         Object v = threadLocalMap.indexedVariable(variablesToRemoveIndex);
         Set<FastThreadLocal<?>> variablesToRemove;
         if (v == InternalThreadLocalMap.UNSET || v == null) {
+            // 创建一个基于 IdentityHashMap 的 Set，泛型是 FastThreadLocal
             variablesToRemove = Collections.newSetFromMap(new IdentityHashMap<FastThreadLocal<?>, Boolean>());
+            // 将这个 Set 放到这个 Map 数组的下标 0 处
             threadLocalMap.setIndexedVariable(variablesToRemoveIndex, variablesToRemove);
         } else {
+            // 如果拿到的不是 UNSET ，说明这是第二次操作了，因此可以强转为 Set
             variablesToRemove = (Set<FastThreadLocal<?>>) v;
         }
 
+        // 最后的目的就是将 FastThreadLocal 放置到 Set 中
         variablesToRemove.add(variable);
     }
 
@@ -188,7 +197,10 @@ public class FastThreadLocal<V> {
      * Set the value for the current thread.
      */
     public final void set(V value) {
+        // 判断设置的 value 值是否是缺省值，如果是，则调用 remove 方法。
         if (value != InternalThreadLocalMap.UNSET) {
+            // 如果不是，则获取道当前线程的 InternalThreadLocalMap。
+            // 然后将该 FastThreadLocal 对应的 index 下标的 value 替换成新的 value。老的 value 设置成缺省值。
             InternalThreadLocalMap threadLocalMap = InternalThreadLocalMap.get();
             setKnownNotUnset(threadLocalMap, value);
         } else {

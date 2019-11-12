@@ -591,6 +591,9 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
      *
      * 此方法中的逻辑应该与notifylistener()相同，但不能共享代码，
      * 因为监听器不能被缓存在DefaultPromise的实例中，不能缓存的原因是监听器可能会被更改，并且受到同步操作的保护。
+     *
+     * 此方法和上方的方法相同，但是上方的通知是使用当前任务的监听器，而此处使用的是传入的监听器，
+     * 可能监听器会发生改变所以没有使用当前任务的字段做缓存，因为做了缓存上方代码是可以复用的。
      */
     private static void notifyListenerWithStackOverFlowProtection(final EventExecutor executor,
                                                                   final Future<?> future,
@@ -617,13 +620,24 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
         });
     }
 
+    /**
+     * 这里对此方法进行一个小结: 这里使用了两个地方用锁而且他们的锁是一样的所以会出现竞争问题，
+     * 如果第一个线程进来并且设置为正在发送通知那么剩下的线程都不会再继续执行并且当前的监听器是null的
+     * 如果通过别的途径再次添加了监听器并且当前的通知还是正在通知的状态那么其他的线程还是进不来，
+     * 但是当前的线程执行完通知会发现当前的监听器又发生了变化，那么这个for的死循环再次执行，
+     * 因为发现又有新的通知所以当前还是正在发送通知状态，所以其他线程还是进不来，最终还是由当前线程进行执行。
+     * 而在讲述notifyListenerWithStackOverFlowProtection的时候说过监听器发生改变所以不能复用的问题，
+     * 而这里就处理如果当前的监听器发送改变的处理。
+     */
     private void notifyListenersNow() {
         Object listeners;
         synchronized (this) {
             // Only proceed if there are listeners to notify and we are not already notifying listeners.
+            // 只有在有监听器要通知而我们还没有通知监听器时才继续。
             if (notifyingListeners || this.listeners == null) {
                 return;
             }
+
             notifyingListeners = true;
             listeners = this.listeners;
             this.listeners = null;
@@ -638,15 +652,20 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
                 if (this.listeners == null) {
                     // Nothing can throw from within this method, so setting notifyingListeners back to false does not
                     // need to be in a finally block.
+                    // 在这个方法中不能抛出任何东西，因此将notifyinglistener设置回false，而不需要在finally块中。
                     notifyingListeners = false;
                     return;
                 }
+                // 可能会在通知的时候又有新的监听器进来，所以这里再次设置了，for循环继续处理
                 listeners = this.listeners;
                 this.listeners = null;
             }
         }
     }
 
+    /**
+     * 通知数组类型的监听器
+     */
     private void notifyListeners0(DefaultFutureListeners listeners) {
         GenericFutureListener<?>[] a = listeners.listeners();
         int size = listeners.size();
@@ -667,15 +686,21 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
     }
 
     private void addListener0(GenericFutureListener<? extends Future<? super V>> listener) {
+        // 如果是null则说明这是第一个监听器那么直接将其赋值给当前的全局变量
         if (listeners == null) {
             listeners = listener;
+            // 否则说明不是第一个监听器那么就判断是不是数组类型的监听器如果是则add加进去就行了
         } else if (listeners instanceof DefaultFutureListeners) {
             ((DefaultFutureListeners) listeners).add(listener);
         } else {
+            // 如果当监听器不是数组类型并且当前添加的不是第一次，所以修改当前局部变量为数组类型的监听器，并且传入两个已知的监听器
             listeners = new DefaultFutureListeners((GenericFutureListener<?>) listeners, listener);
         }
     }
 
+    /**
+     * 删除监听器，非常简单如果是数组类型那么直接从数组中移除如果不是数组类型那么就置为null
+     */
     private void removeListener0(GenericFutureListener<? extends Future<? super V>> listener) {
         if (listeners instanceof DefaultFutureListeners) {
             ((DefaultFutureListeners) listeners).remove(listener);
@@ -684,6 +709,9 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
         }
     }
 
+    /**
+     * 设置当前任务的结果为成功，如果传入的结果是是null则设置为SUCCESS，否则设置为传入的result
+     */
     private boolean setSuccess0(V result) {
         return setValue0(result == null ? SUCCESS : result);
     }
@@ -692,9 +720,13 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
         return setValue0(new CauseHolder(checkNotNull(cause, "cause")));
     }
 
+    /**
+     * 设置result的值，成功设置表示该promise已经处于done状态，需要通知其他wait的线程
+     */
     private boolean setValue0(Object objResult) {
         if (RESULT_UPDATER.compareAndSet(this, null, objResult) ||
             RESULT_UPDATER.compareAndSet(this, UNCANCELLABLE, objResult)) {
+            // 对前面wait等待线程的通知，如果listeners != null，通知监听器
             if (checkNotifyWaiters()) {
                 notifyListeners();
             }
@@ -734,15 +766,25 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
         PlatformDependent.throwException(cause);
     }
 
+    /**
+     * await等待异步任务完成
+     * @param timeoutNanos 等待的纳秒时间
+     * @param interruptable 是否中断抛出异常
+     * @return
+     * @throws InterruptedException
+     */
     private boolean await0(long timeoutNanos, boolean interruptable) throws InterruptedException {
         if (isDone()) {
             return true;
         }
 
+        // 否则判断当前传入的时间是否小于等于0，如果是则返回当前执行结果是否为成功
         if (timeoutNanos <= 0) {
             return isDone();
         }
 
+        // 判断是否允许抛出中断异常，并且判断当前线程是否被中断如果两者都成立则抛出中断异常
+        // 所以{@link DefaultPromise#awaitUninterruptibly()}方法依然要捕捉该错误
         if (interruptable && Thread.interrupted()) {
             throw new InterruptedException(toString());
         }
@@ -758,22 +800,31 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
                     if (isDone()) {
                         return true;
                     }
+                    // 等待线程数+1
                     incWaiters();
                     try {
+                        // 使用wait进行等待,因为wait传入参数是毫秒而这里是纳秒所以这里做了处理
+                        // 1、获取纳秒数中的毫秒传入第一个参数
+                        // 2、获取剩余的那纳秒数作为第二个参数
+                        // wait 第一个参数是毫秒数 第二个参数是纳秒数，看起来比较精准其实jdk只是发现有纳秒数后对毫秒数进行了+1
                         wait(waitTime / 1000000, (int) (waitTime % 1000000));
                     } catch (InterruptedException e) {
+                        // 如果出现中断异常，那么判断传入的第二个参数是否抛出异常如果为true，此处则抛出异常否则修改前面声明的变量为true
                         if (interruptable) {
                             throw e;
                         } else {
                             interrupted = true;
                         }
                     } finally {
+                        // 不管最终如何都会对waiters进行-1操作
                         decWaiters();
                     }
                 }
+                // 能到这里说明已经被唤醒则判断是否执行成功，执行成功则返回true
                 if (isDone()) {
                     return true;
                 } else {
+                    // 否则判断当前睡眠时间是否超过设置时间，如果超过则返回当前的执行结果，否则继续循环
                     waitTime = timeoutNanos - (System.nanoTime() - startTime);
                     if (waitTime <= 0) {
                         return isDone();
@@ -781,6 +832,7 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
                 }
             }
         } finally {
+            // 当跳出循环后判断在等待过程中是否发生了中断异常，如果发生则将当前线程进行中断
             if (interrupted) {
                 Thread.currentThread().interrupt();
             }
@@ -789,21 +841,26 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
 
     /**
      * Notify all progressive listeners.
+     * 通知所有进度监听器。
      * <p>
      * No attempt is made to ensure notification order if multiple calls are made to this method before
      * the original invocation completes.
+     * 如果在原始调用完成之前对该方法进行了多次调用，则不会尝试确保通知顺序。
      * <p>
      * This will do an iteration over all listeners to get all of type {@link GenericProgressiveFutureListener}s.
-     * @param progress the new progress.
-     * @param total the total progress.
+     * 这将对所有监听器进行一次迭代，以获得所有{@link GenericProgressiveFutureListener}的类型。
+     * @param progress the new progress. 当前的进度
+     * @param total the total progress. 总的进度
      */
     @SuppressWarnings("unchecked")
     void notifyProgressiveListeners(final long progress, final long total) {
+        // 从当前的监听器中获取到进度监听器，如果没有则return，否则继续执行
         final Object listeners = progressiveListeners();
         if (listeners == null) {
             return;
         }
 
+        // 对应进度监听器的自然是进度的任务管理，所以会将当前的this转为进度管理器self
         final ProgressiveFuture<V> self = (ProgressiveFuture<V>) this;
 
         EventExecutor executor = executor();
@@ -841,8 +898,11 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
     /**
      * Returns a {@link GenericProgressiveFutureListener}, an array of {@link GenericProgressiveFutureListener}, or
      * {@code null}.
+     * 获取进度监听器列表，因为任务中只有一个字段存储监听器所以需要从该字段中进行筛选，此方法就是对这个字段进行类的筛选
      */
     private synchronized Object progressiveListeners() {
+        // 获取当前任务的监听器,这里之所以使用一个临时变量进行接收是害怕其他线程如果修改了监听器那么下面的处理会出现未知异常，
+        // 所以为了保证不出错此处将监听器做了处理。
         Object listeners = this.listeners;
         if (listeners == null) {
             // No listeners added
