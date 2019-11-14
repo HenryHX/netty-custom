@@ -42,7 +42,9 @@ import java.util.Set;
  * @see ThreadLocal
  */
 public class FastThreadLocal<V> {
-
+    // 静态方法 所以一般都是在InternalThreadLocalMap——indexedVariables——index=0的位置保存待删除列表Set<FastThreadLocal<?>>
+    // 原理是，在ThreadLocalMap中保存当前线程持有哪些FastThreadLocal<?>数据集合，这样在清空的时候，可以直接访问该集合,
+    // 获取FastThreadLocal的index值，然后在ThreadLocalMap——indexedVariables[index]快速访问，不需要迭代遍历
     private static final int variablesToRemoveIndex = InternalThreadLocalMap.nextVariableIndex();
 
     /**
@@ -131,6 +133,8 @@ public class FastThreadLocal<V> {
         variablesToRemove.remove(variable);
     }
 
+    // 每个ftl实例以步长为1的递增序列，获取index值，这保证了InternalThreadLocalMap中数组的长度不会突增
+    // 每个ftl实例的index值都不相同，获取当前线程的ThreadLocalMap，就可以获取ThreadLocalMap——index下标的value
     private final int index;
 
     public FastThreadLocal() {

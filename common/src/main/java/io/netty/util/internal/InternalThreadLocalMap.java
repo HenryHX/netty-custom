@@ -44,8 +44,20 @@ public final class InternalThreadLocalMap extends UnpaddedInternalThreadLocalMap
     private static final int STRING_BUILDER_INITIAL_SIZE;
     private static final int STRING_BUILDER_MAX_SIZE;
 
+    // 用于标识数组的槽位还未使用，初始化默认值
     public static final Object UNSET = new Object();
 
+    /**
+     * 用于标识ftl变量是否注册了cleaner
+     * BitSet简要原理：
+     * BitSet默认底层数据结构是一个long[]数组，开始时长度为1，即只有long[0],而一个long有64bit。
+     * 当BitSet.set(1)的时候，表示将long[0]的第二位设置为true，即0000 0000 ... 0010（64bit）,则long[0]==2
+     * 当BitSet.get(1)的时候，第二位为1，则表示true；如果是0，则表示false
+     * 当BitSet.set(64)的时候，表示设置第65位，此时long[0]已经不够用了，扩容处long[1]来，进行存储
+     *
+     * 存储类似 {index:boolean} 键值对，用于防止一个FastThreadLocal多次启动清理线程
+     * 将index位置的bit设为true，表示该InternalThreadLocalMap中对该FastThreadLocal已经启动了清理线程
+     */
     private BitSet cleanerFlags;
 
     static {
@@ -136,6 +148,8 @@ public final class InternalThreadLocalMap extends UnpaddedInternalThreadLocalMap
 
     // Cache line padding (must be public)
     // With CompressedOops enabled, an instance of this class should occupy at least 128 bytes.
+    // 高速缓存行填充(必须是公共的)
+    // 启用CompressedOops后，该类的实例应该至少占用128个字节。
     public long rp1, rp2, rp3, rp4, rp5, rp6, rp7, rp8, rp9;
 
     private InternalThreadLocalMap() {
