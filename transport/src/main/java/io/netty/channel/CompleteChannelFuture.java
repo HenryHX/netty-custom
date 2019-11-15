@@ -23,6 +23,9 @@ import io.netty.util.concurrent.GenericFutureListener;
 /**
  * A skeletal {@link ChannelFuture} implementation which represents a
  * {@link ChannelFuture} which has been completed already.
+ *
+ * <p>一个{@link ChannelFuture}实现的框架，它代表一个已经完成的{@link ChannelFuture}。</p>
+ * 比{@link CompleteFuture}多了一个{@link Channel}字段
  */
 abstract class CompleteChannelFuture extends CompleteFuture<Void> implements ChannelFuture {
 

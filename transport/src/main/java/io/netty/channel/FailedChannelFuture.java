@@ -22,6 +22,8 @@ import io.netty.util.internal.PlatformDependent;
  * The {@link CompleteChannelFuture} which is failed already.  It is
  * recommended to use {@link Channel#newFailedFuture(Throwable)}
  * instead of calling the constructor of this future.
+ *
+ * <p>{@link CompleteChannelFuture}已经失败。建议使用{@link Channel#newFailedFuture(Throwable)}而不是调用这个future的构造函数。</p>
  */
 final class FailedChannelFuture extends CompleteChannelFuture {
 
@@ -51,12 +53,18 @@ final class FailedChannelFuture extends CompleteChannelFuture {
         return false;
     }
 
+    /**
+     * 操作失败，重新抛出失败的原因。
+     */
     @Override
     public ChannelFuture sync() {
         PlatformDependent.throwException(cause);
         return this;
     }
 
+    /**
+     * 以不可中断方式，等待异步任务，直到操作完成，如果操作失败，则重新抛出失败的原因。
+     */
     @Override
     public ChannelFuture syncUninterruptibly() {
         PlatformDependent.throwException(cause);

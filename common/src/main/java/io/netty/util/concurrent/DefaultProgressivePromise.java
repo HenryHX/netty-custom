@@ -22,9 +22,10 @@ public class DefaultProgressivePromise<V> extends DefaultPromise<V> implements P
      * Creates a new instance.
      *
      * It is preferable to use {@link EventExecutor#newProgressivePromise()} to create a new progressive promise
-     *
+     * <p>最好使用{@link EventExecutor#newProgressivePromise()}来创建一个新的progressive promise</p>
      * @param executor
      *        the {@link EventExecutor} which is used to notify the promise when it progresses or it is complete
+     *        <p>{@link EventExecutor}操作有进展或完成时通知promise</p>
      */
     public DefaultProgressivePromise(EventExecutor executor) {
         super(executor);
@@ -34,6 +35,7 @@ public class DefaultProgressivePromise<V> extends DefaultPromise<V> implements P
 
     @Override
     public ProgressivePromise<V> setProgress(long progress, long total) {
+        // 如果传入的总进度小于0，则设置为-1，代表未知进度
         if (total < 0) {
             // total unknown
             total = -1; // normalize
@@ -41,14 +43,17 @@ public class DefaultProgressivePromise<V> extends DefaultPromise<V> implements P
                 throw new IllegalArgumentException("progress: " + progress + " (expected: >= 0)");
             }
         } else if (progress < 0 || progress > total) {
+            // 如果总进度大于0 但是设置的进度小于0 或者设置进度大于总进度，则抛出异常
             throw new IllegalArgumentException(
                     "progress: " + progress + " (expected: 0 <= progress <= total (" + total + "))");
         }
 
+        // 如果总进度大于0 但是 设置的进度小于0 或者 设置进度大于总进度 则抛出异常
         if (isDone()) {
             throw new IllegalStateException("complete already");
         }
 
+        // 通知进度监听器
         notifyProgressiveListeners(progress, total);
         return this;
     }

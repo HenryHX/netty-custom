@@ -25,6 +25,7 @@ public interface ProgressivePromise<V> extends Promise<V>, ProgressiveFuture<V> 
      * Sets the current progress of the operation and notifies the listeners that implement
      * {@link GenericProgressiveFutureListener}.
      * 设置当前操作进程，并通知实现了GenericProgressiveFutureListener的监听器
+     * 如果设置参数有误或者当前任务已经执行结束则会抛出异常
      */
     ProgressivePromise<V> setProgress(long progress, long total);
 
