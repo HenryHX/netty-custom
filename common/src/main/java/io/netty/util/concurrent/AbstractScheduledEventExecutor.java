@@ -28,8 +28,12 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Abstract base class for {@link EventExecutor}s that want to support scheduling.
+ *
+ * <p>AbstractScheduledEventExecutor在AbstractEventExecutor的基础上提供了对定时任务的支持, 在内部有一个queue用于保存定时任务.</p>
  */
 public abstract class AbstractScheduledEventExecutor extends AbstractEventExecutor {
+    // 比较器-根据ScheduledFutureTask的到期时间比较大小
+    // 到期时间长的大
     private static final Comparator<ScheduledFutureTask<?>> SCHEDULED_FUTURE_TASK_COMPARATOR =
             new Comparator<ScheduledFutureTask<?>>() {
                 @Override
@@ -38,6 +42,7 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
                 }
             };
 
+    // 任务队列，存储所有待执行任务
     PriorityQueue<ScheduledFutureTask<?>> scheduledTaskQueue;
 
     long nextTaskId;
@@ -55,6 +60,9 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
 
     /**
      * Given an arbitrary deadline {@code deadlineNanos}, calculate the number of nano seconds from now
+     * <p>
+     * 给定任意的最后期限{@code deadlineNanos}，计算从现在开始到最后期限还剩几纳秒
+     *
      * {@code deadlineNanos} would expire.
      * @param deadlineNanos An arbitrary deadline in nano seconds.
      * @return the number of nano seconds from now {@code deadlineNanos} would expire.
@@ -65,6 +73,8 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
 
     /**
      * The initial value used for delay and computations based upon a monatomic time source.
+     * 用于延迟和基于单原子时间源的计算的初始值。
+     *
      * @return initial value used for delay and computations based upon a monatomic time source.
      */
     protected static long initialNanoTime() {
@@ -116,6 +126,9 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
 
     /**
      * Return the {@link Runnable} which is ready to be executed with the given {@code nanoTime}.
+     * <p>
+     * 小顶堆queue第一个node的deadlineNanos > 传入的时间nanoTime，queue里没有一个元素满足执行的时间要求，返回null
+     * <p>
      * You should use {@link #nanoTime()} to retrieve the correct {@code nanoTime}.
      */
     protected final Runnable pollScheduledTask(long nanoTime) {
@@ -132,6 +145,7 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
 
     /**
      * Return the nanoseconds when the next scheduled task is ready to be run or {@code -1} if no task is scheduled.
+     * <p>计算现在起，下一个调度任务还有多少纳秒准备好可以运行；如果没有调度任务，返回{@code -1}。</p>
      */
     protected final long nextScheduledTaskNano() {
         ScheduledFutureTask<?> scheduledTask = peekScheduledTask();
@@ -141,6 +155,7 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
     /**
      * Return the deadline (in nanoseconds) when the next scheduled task is ready to be run or {@code -1}
      * if no task is scheduled.
+     * <p>当下一个调度任务准备好运行时，返回最后期限(以纳秒为单位);如果没有调度任务，则返回{@code -1}。</p>
      */
     protected final long nextScheduledTaskDeadlineNanos() {
         ScheduledFutureTask<?> scheduledTask = peekScheduledTask();
@@ -154,6 +169,7 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
 
     /**
      * Returns {@code true} if a scheduled task is ready for processing.
+     * <p>如果queue有scheduledTask到运行期限，则返回{@code true}。</p>
      */
     protected final boolean hasScheduledTasks() {
         ScheduledFutureTask<?> scheduledTask = peekScheduledTask();
@@ -271,6 +287,9 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
      * Execute a {@link Runnable} from outside the event loop thread that is responsible for adding or removing
      * a scheduled action. Note that schedule events which occur on the event loop thread do not interact with this
      * method.
+     * <p>
+     * 在事件循环线程外部执行添加或删除调度操作的{@link Runnable}。请注意，事件循环线程上发生的调度事件不与此方法交互。
+     *
      * @param runnable The {@link Runnable} to execute which will add or remove a scheduled action
      * @param isAddition {@code true} if the {@link Runnable} will add an action, {@code false} if it will remove an
      *                   action

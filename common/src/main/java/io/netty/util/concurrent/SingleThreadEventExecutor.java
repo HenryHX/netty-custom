@@ -45,6 +45,7 @@ import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 /**
  * Abstract base class for {@link OrderedEventExecutor}'s that execute all its submitted tasks in a single thread.
+ * <p>{@link OrderedEventExecutor}的抽象基类，它在单个线程中执行其提交的所有任务。</p>
  *
  */
 public abstract class SingleThreadEventExecutor extends AbstractScheduledEventExecutor implements OrderedEventExecutor {
@@ -61,12 +62,14 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     private static final int ST_SHUTDOWN = 4;
     private static final int ST_TERMINATED = 5;
 
+    // 定了一个什么都不做的task, 这是一个特殊任务,用来做wake up的标记
     private static final Runnable WAKEUP_TASK = new Runnable() {
         @Override
         public void run() {
             // Do nothing.
         }
     };
+    // 等待任务
     private static final Runnable NOOP_TASK = new Runnable() {
         @Override
         public void run() {
@@ -80,6 +83,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
             AtomicReferenceFieldUpdater.newUpdater(
                     SingleThreadEventExecutor.class, ThreadProperties.class, "threadProperties");
 
+    // 可以执行的任务队列
     private final Queue<Runnable> taskQueue;
 
     private volatile Thread thread;
@@ -254,6 +258,8 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     /**
      * Take the next {@link Runnable} from the task queue and so will block if no task is currently present.
+     * <p>从任务队列中取出下一个{@link Runnable}，如果当前没有任务，则阻塞。</p>
+     * <p>注意这个时候任务有两个来源: taskQueue和scheduledTask. 因此取任务时需要考虑很多情况。</p>
      * <p>
      * Be aware that this method will throw an {@link UnsupportedOperationException} if the task queue, which was
      * created via {@link #newTaskQueue()}, does not implement {@link BlockingQueue}.
@@ -263,31 +269,49 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
      */
     protected Runnable takeTask() {
         assert inEventLoop();
+        // 检查当前taskQueue, 如果不是BlockingQueue抛异常退出
         if (!(taskQueue instanceof BlockingQueue)) {
             throw new UnsupportedOperationException();
         }
 
         BlockingQueue<Runnable> taskQueue = (BlockingQueue<Runnable>) this.taskQueue;
         for (;;) {
+            // 从scheduledTaskQueue取一个scheduledTask, 注意方法是peek, 另外这个task有可能还没有到执行时间
             ScheduledFutureTask<?> scheduledTask = peekScheduledTask();
             if (scheduledTask == null) {
+                // scheduledTask为null, 说明当前scheduledTaskQueue中没有定时任务
+                // 这个时候不用考虑定时任务, 直接从taskQueue中拿任务即可
                 Runnable task = null;
                 try {
+                    // 从taskQueue取任务, 如果没有任务会被阻塞, 直到取到任务,或者被Interrupted
                     task = taskQueue.take();
+                    // 检查如果是WAKEUP_TASK, 则需要跳过
                     if (task == WAKEUP_TASK) {
                         task = null;
                     }
                 } catch (InterruptedException e) {
                     // Ignore
                 }
+                // 如果从taskQueue中拿任务成功,则返回, 如果没有任务或者没有成功,则返回的是null
                 return task;
             } else {
+                // scheduledTask不为null, 说明当前scheduledTaskQueue中有定时任务
+                // 但是这个定时任务可能还没有到执行时间, 因此需要检查delayNanos
                 long delayNanos = scheduledTask.delayNanos();
                 Runnable task = null;
                 if (delayNanos > 0) {
+                    // delayNanos > 0 说明这个定时任务没有到执行时间, 所以这个定时任务是不能用的了
+                    // 那就需要从taskQueue里面取任务了
                     try {
+                        // 从taskQueue取任务, 如果没有任务则最多等待delayNanos时间, 注意这里线程会被阻塞
+                        // 如果delayNanos时间内有任务加入到taskQueue, 则可以实时取到这个任务
+                        // 线程结束阻塞继续执行, 这个task就可以返回了
+                        // 如果delayNanos时间内一直没有任务, 则timeout后线程结束阻塞,poll()方法返回null
                         task = taskQueue.poll(delayNanos, TimeUnit.NANOSECONDS);
                     } catch (InterruptedException e) {
+                        // 还有一种可能就是delayNanos时间内被waken up
+                        // 比如有新的scheduledTask加入, delay时间小于前面的delayNanos
+                        // 因此不能等待delayNanos timeout,需要提前结束阻塞
                         // Waken up.
                         return null;
                     }
@@ -297,17 +321,23 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                     // scheduled tasks are never executed if there is always one task in the taskQueue.
                     // This is for example true for the read task of OIO Transport
                     // See https://github.com/netty/netty/issues/1614
+                    // 继续尝试从scheduledTaskQueue取满足条件的task到taskQueue中
                     fetchFromScheduledTaskQueue();
+                    // 然后再从taskQueue获取试试
                     task = taskQueue.poll();
                 }
 
                 if (task != null) {
+                    // 只有task不为空时才返回并退出, 否则前面的for循环就一直
                     return task;
                 }
             }
         }
     }
 
+    /**
+     * 从scheduledTaskQueue中poll第一个task放到taskQueue中
+     */
     private boolean fetchFromScheduledTaskQueue() {
         if (scheduledTaskQueue == null || scheduledTaskQueue.isEmpty()) {
             return true;
@@ -320,6 +350,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
             }
             if (!taskQueue.offer(scheduledTask)) {
                 // No space left in the task queue add it back to the scheduledTaskQueue so we pick it up again.
+                // task queue中已经没有空间了，将它添加回scheduledTaskQueue中，这样我们就可以再次获取它。
                 scheduledTaskQueue.add((ScheduledFutureTask<?>) scheduledTask);
                 return false;
             }

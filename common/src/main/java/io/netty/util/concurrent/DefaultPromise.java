@@ -169,6 +169,7 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
         Object result = this.result;
         // 否则获取当前的结果并且判断是成功了还是被取消了
         // 如果是已经完成且是取消状态，则返回false，其他情况，即result已经等于UNCANCELLABLE则设置失败返回true
+        // 如果没有完成，返回true，此时肯定不能cancel；如果已经完成，同时最终不是cancel状态，返回true
         return !isDone0(result) || !isCancelled0(result);
     }
 

@@ -40,7 +40,8 @@ public interface EventExecutorGroup extends ScheduledExecutorService, Iterable<E
      * Returns {@code true} if and only if all {@link EventExecutor}s managed by this {@link EventExecutorGroup}
      * are being {@linkplain #shutdownGracefully() shut down gracefully} or was {@linkplain #isShutdown() shut down}.
      *
-     * <p>当且仅当由这个{@link EventExecutorGroup}管理的所有{@link EventExecutor}正在shutdownGracefully或者已经是shutdown状态，返回{@code true}。</p>
+     * <p>当且仅当由这个{@link EventExecutorGroup}管理的所有{@link EventExecutor}正在shutdownGracefully或者
+     * 已经是shutdown状态，返回{@code true}。</p>
      */
     boolean isShuttingDown();
 
@@ -58,7 +59,8 @@ public interface EventExecutorGroup extends ScheduledExecutorService, Iterable<E
      * (usually a couple seconds) before it shuts itself down.  If a task is submitted during the quiet period,
      * it is guaranteed to be accepted and the quiet period will start over.
      *
-     * <p>向该executor发出信号，表明调用者希望关闭该executor。调用此方法后，{@link #isShuttingDown()}开始返回{@code true}，executor准备关闭自身。
+     * <p>向该executor发出信号，表明调用者希望关闭该executor。调用此方法后，{@link #isShuttingDown()}开始返回{@code true}，
+     * executor准备关闭自身。
      * 与{@link #shutdown()}不同，优雅的关闭自己之前需要确保在<i>'the quiet period'</i>(通常是几秒钟)内不会提交任何任务。
      * 如果一个任务是在安静期提交的，它将被保证被接受，安静期将重新开始计算。</p>
      *

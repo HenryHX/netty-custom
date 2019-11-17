@@ -102,6 +102,8 @@ class PromiseTask<V> extends DefaultPromise<V> implements RunnableFuture<V> {
     @Override
     public void run() {
         try {
+            // 如果是已经完成且是取消状态，则返回false，
+            // 其他情况，如果没有完成，返回true，此时肯定不能cancel；如果已经完成，同时最终不是cancel状态，返回true
             if (setUncancellableInternal()) {
                 V result = runTask();
                 setSuccessInternal(result);
@@ -117,6 +119,8 @@ class PromiseTask<V> extends DefaultPromise<V> implements RunnableFuture<V> {
             // to be called is in the case of a periodic ScheduledFutureTask,
             // in which case it's a benign race with cancellation and the (null)
             // return value is not used.
+            // 唯一可能调用标记任务的情况是在一个周期性ScheduledFutureTask的情况下，
+            // 在这种情况下，它是一个良性的取消竞争，并且(null)返回值没有被使用。
             task = result;
         }
         return done;

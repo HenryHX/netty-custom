@@ -22,10 +22,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
-import java.util.concurrent.AbstractExecutorService;
-import java.util.concurrent.Callable;
-import java.util.concurrent.RunnableFuture;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 /**
  * Abstract base class for {@link EventExecutor} implementations.
@@ -62,6 +59,9 @@ public abstract class AbstractEventExecutor extends AbstractExecutorService impl
         return inEventLoop(Thread.currentThread());
     }
 
+    /**
+     * EventExecutor的iterator()方法需要的集合只能包含自身的引用
+     */
     @Override
     public Iterator<EventExecutor> iterator() {
         return selfCollection.iterator();
@@ -69,6 +69,7 @@ public abstract class AbstractEventExecutor extends AbstractExecutorService impl
 
     @Override
     public Future<?> shutdownGracefully() {
+        // 如果2s内没有任务提交（有任务提交重新计算2s），或者超过15s，关闭executor
         return shutdownGracefully(DEFAULT_SHUTDOWN_QUIET_PERIOD, DEFAULT_SHUTDOWN_TIMEOUT, TimeUnit.SECONDS);
     }
 
@@ -109,6 +110,11 @@ public abstract class AbstractEventExecutor extends AbstractExecutorService impl
         return new FailedFuture<V>(this, cause);
     }
 
+    /**
+     * 三个submit()方法将返回的Future类型从{@link java.util.concurrent.Future}
+     * 覆盖成了netty自己的{@link io.netty.util.concurrent.Future}.
+     * (注意:io.netty.util.concurrent.Future是extends java.util.concurrent.Future的)
+     */
     @Override
     public Future<?> submit(Runnable task) {
         return (Future<?>) super.submit(task);
@@ -124,6 +130,10 @@ public abstract class AbstractEventExecutor extends AbstractExecutorService impl
         return (Future<T>) super.submit(task);
     }
 
+    /**
+     * {@link AbstractExecutorService#newTaskFor}设计成protected就是为了让子类覆盖的
+     * <p>RunnableFuture的实现类从JDK的{@link FutureTask}换成了netty自己的{@link PromiseTask}.</p>
+     */
     @Override
     protected final <T> RunnableFuture<T> newTaskFor(Runnable runnable, T value) {
         return new PromiseTask<T>(this, runnable, value);
@@ -157,6 +167,7 @@ public abstract class AbstractEventExecutor extends AbstractExecutorService impl
 
     /**
      * Try to execute the given {@link Runnable} and just log if it throws a {@link Throwable}.
+     * <p>尝试执行给定的{@link Runnable}，如果抛出一个{@link Throwable}，就记录日志。
      */
     protected static void safeExecute(Runnable task) {
         try {
