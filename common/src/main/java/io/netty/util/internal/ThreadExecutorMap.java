@@ -23,6 +23,7 @@ import java.util.concurrent.ThreadFactory;
 
 /**
  * Allow to retrieve the {@link EventExecutor} for the calling {@link Thread}.
+ * <p>允许为调用{@link Thread}检索{@link EventExecutor}。</p>
  */
 public final class ThreadExecutorMap {
 
@@ -32,6 +33,7 @@ public final class ThreadExecutorMap {
 
     /**
      * Returns the current {@link EventExecutor} that uses the {@link Thread}, or {@code null} if none / unknown.
+     * <p>返回当前{@link Thread}使用的{@link EventExecutor}，如果没有/未知，则返回{@code null}。</p>
      */
     public static EventExecutor currentExecutor() {
         return mappings.get();
@@ -39,6 +41,7 @@ public final class ThreadExecutorMap {
 
     /**
      * Set the current {@link EventExecutor} that is used by the {@link Thread}.
+     * <p>设置当前{@link Thread}使用的{@link EventExecutor}</p>
      */
     private static void setCurrentEventExecutor(EventExecutor executor) {
         mappings.set(executor);
@@ -47,11 +50,18 @@ public final class ThreadExecutorMap {
     /**
      * Decorate the given {@link Executor} and ensure {@link #currentExecutor()} will return {@code eventExecutor}
      * when called from within the {@link Runnable} during execution.
+     * <p>
+     * 修饰给定的{@link Executor}，并确保{@link #currentExecutor()}在执行期间从{@link Runnable}内调用时将返回{@code eventExecutor}。
      */
     public static Executor apply(final Executor executor, final EventExecutor eventExecutor) {
         ObjectUtil.checkNotNull(executor, "executor");
         ObjectUtil.checkNotNull(eventExecutor, "eventExecutor");
         return new Executor() {
+            /**
+             * 使用{@link io.netty.util.concurrent.ThreadPerTaskExecutor#execute(java.lang.Runnable)}
+             * executor每次执行command的时候都会创建一个新的thread
+             * 这边处理的目的，为了方便在新的线程内获取与command关联的EventExecutor
+             */
             @Override
             public void execute(final Runnable command) {
                 executor.execute(apply(command, eventExecutor));

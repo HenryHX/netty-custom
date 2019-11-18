@@ -56,11 +56,11 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     private static final InternalLogger logger =
             InternalLoggerFactory.getInstance(SingleThreadEventExecutor.class);
 
-    private static final int ST_NOT_STARTED = 1;
-    private static final int ST_STARTED = 2;
-    private static final int ST_SHUTTING_DOWN = 3;
-    private static final int ST_SHUTDOWN = 4;
-    private static final int ST_TERMINATED = 5;
+    private static final int ST_NOT_STARTED = 1;    // 未启动，未启动接受任务
+    private static final int ST_STARTED = 2;        // 已启动，运行
+    private static final int ST_SHUTTING_DOWN = 3;  // 关闭中（平滑关闭）
+    private static final int ST_SHUTDOWN = 4;       // 已关闭
+    private static final int ST_TERMINATED = 5;     // 终止
 
     // 定了一个什么都不做的task, 这是一个特殊任务,用来做wake up的标记
     private static final Runnable WAKEUP_TASK = new Runnable() {
@@ -94,7 +94,9 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     private final CountDownLatch threadLock = new CountDownLatch(1);
     private final Set<Runnable> shutdownHooks = new LinkedHashSet<Runnable>();
+    /**当且仅当调用{@link #addTask(Runnable)}需要唤醒执行线程时，设置为{@code true}*/
     private final boolean addTaskWakesUp;
+    /**拒绝新任务之前的最大挂起任务数。*/
     private final int maxPendingTasks;
     private final RejectedExecutionHandler rejectedExecutionHandler;
 
@@ -187,9 +189,15 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
      * Returns {@code true} if the {@link EventExecutor} thread should be woken immediately to
      * process the scheduled task (if not already awake).
      * <p>
+     * 从任意非{@link EventExecutor}线程提交调度任务之前调用。
+     * 如果{@link EventExecutor}线程应该立即被唤醒以处理计划的任务(如果尚未唤醒)，则返回{@code true}。
+     * <p>
      * If {@code false} is returned, {@link #afterScheduledTaskSubmitted(long)} will be called with
      * the same value <i>after</i> the scheduled task is enqueued, providing another opportunity
      * to wake the {@link EventExecutor} thread if required.
+     * <p>
+     * 如果{@code false}被返回，在调度任务被加入队列之后{@link #afterScheduledTaskSubmitted(long)}将被调用
+     * 返回相同的值，以提供另一个机会来唤醒{@link EventExecutor}线程。
      *
      * @param deadlineNanos deadline of the to-be-scheduled task
      *     relative to {@link AbstractScheduledEventExecutor#nanoTime()}
@@ -222,6 +230,9 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
      * {@link LinkedBlockingQueue} but if your sub-class of {@link SingleThreadEventExecutor} will not do any blocking
      * calls on the this {@link Queue} it may make sense to {@code @Override} this and return some more performant
      * implementation that does not support blocking operations at all.
+     * <p>
+     * 默认实现将返回{@link LinkedBlockingQueue}，但是如果子类不会对这个任务队列执行任何阻塞调用，
+     * 那么{@code @Override}这样做是有意义的，并返回一些根本不支持阻塞操作的性能实现。
      */
     protected Queue<Runnable> newTaskQueue(int maxPendingTasks) {
         return new LinkedBlockingQueue<Runnable>(maxPendingTasks);
@@ -240,6 +251,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     }
 
     /**
+     * 阻塞直到返回一个可用task
      * @see Queue#poll()
      */
     protected Runnable pollTask() {
@@ -316,6 +328,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                         return null;
                     }
                 }
+                // 注意这里执行有两种情况：1.任务队列中没有待执行任务，2.调度任务已到期
                 if (task == null) {
                     // We need to fetch the scheduled tasks now as otherwise there may be a chance that
                     // scheduled tasks are never executed if there is always one task in the taskQueue.
@@ -336,7 +349,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     }
 
     /**
-     * 从scheduledTaskQueue中poll第一个task放到taskQueue中
+     * 从scheduledTaskQueue中poll所有过期的task放到taskQueue中
      */
     private boolean fetchFromScheduledTaskQueue() {
         if (scheduledTaskQueue == null || scheduledTaskQueue.isEmpty()) {
@@ -358,6 +371,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     }
 
     /**
+     * 如果至少执行了一个调度任务，则为{@code true}。
      * @return {@code true} if at least one scheduled task was executed.
      */
     private boolean executeExpiredScheduledTasks() {
@@ -433,6 +447,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     /**
      * Poll all tasks from the task queue and run them via {@link Runnable#run()} method.
+     * <p>从任务队列轮询所有任务,包括到期的定时调度任务，并通过{@link Runnable#run()}方法运行它们。</p>
      *
      * @return {@code true} if and only if at least one task was run
      */
@@ -448,6 +463,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
             }
         } while (!fetchedAll); // keep on processing until we fetched all scheduled tasks.
 
+        // 至少成功执行一个task，记录本次执行的时间
         if (ranAtLeastOne) {
             lastExecutionTime = ScheduledFutureTask.nanoTime();
         }
@@ -458,9 +474,11 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     /**
      * Execute all expired scheduled tasks and all current tasks in the executor queue until both queues are empty,
      * or {@code maxDrainAttempts} has been exceeded.
+     * <p>执行所有过期的计划任务和所有taskQueue当前任务，直到两个队列都为空，或者{@code max}已被超出。</p>
      * @param maxDrainAttempts The maximum amount of times this method attempts to drain from queues. This is to prevent
      *                         continuous task execution and scheduling from preventing the EventExecutor thread to
      *                         make progress and return to the selector mechanism to process inbound I/O events.
+     *                         此方法尝试从队列中取出的最大次数.
      * @return {@code true} if at least one task was run.
      */
     protected final boolean runScheduledAndExecutorTasks(final int maxDrainAttempts) {
@@ -483,6 +501,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     /**
      * Runs all tasks from the passed {@code taskQueue}.
+     * <p>从已传递的{@code taskQueue}运行所有任务。</p>
      *
      * @param taskQueue To poll and execute all tasks.
      *
@@ -525,6 +544,8 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     /**
      * Poll all tasks from the task queue and run them via {@link Runnable#run()} method.  This method stops running
      * the tasks in the task queue and returns if it ran longer than {@code timeoutNanos}.
+     * <p>
+     * 从任务队列轮询所有任务，并通过{@link Runnable#run()}方法运行它们。如果运行时间超过{@code timeoutNanos}，则停止在任务队列中运行任务。
      */
     protected boolean runAllTasks(long timeoutNanos) {
         fetchFromScheduledTaskQueue();
@@ -544,6 +565,8 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
             // Check timeout every 64 tasks because nanoTime() is relatively expensive.
             // XXX: Hard-coded value - will make it configurable if it is really a problem.
+            // 每64个任务检查一次超时，因为nanoTime()比较耗时。
+            // XXX: 硬编码的值-如果它真的是一个问题，可以设置为配置项。
             if ((runTasks & 0x3F) == 0) {
                 lastExecutionTime = ScheduledFutureTask.nanoTime();
                 if (lastExecutionTime >= deadline) {
@@ -571,6 +594,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     /**
      * Returns the amount of time left until the scheduled task with the closest dead line is executed.
+     * <p>返回最近期限的计划任务的剩余时间。</p>
      */
     protected long delayNanos(long currentTimeNanos) {
         ScheduledFutureTask<?> scheduledTask = peekScheduledTask();
@@ -617,20 +641,28 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         // NOOP
     }
 
+    /**
+     * 如果inEventLoop为true，表示thread没有阻塞，不需要唤醒
+     * @param inEventLoop
+     */
     protected void wakeup(boolean inEventLoop) {
         if (!inEventLoop) {
             // Use offer as we actually only need this to unblock the thread and if offer fails we do not care as there
             // is already something in the queue.
+            // 因为如果线程堵塞在poll/take操作，我们实际上只需要offer新增一个task就可以唤醒线程;
+            // 如果offer失败，我们不关心，因为阻塞队列taskQueue（LinkedBlockingQueue）中已经有消息了，线程处于running状态，不需要手动唤醒。
             taskQueue.offer(WAKEUP_TASK);
         }
     }
 
+    // 重写父类方法
     @Override
     final void executeScheduledRunnable(final Runnable runnable, boolean isAddition, long deadlineNanos) {
         // Don't wakeup if this is a removal task or if beforeScheduledTaskSubmitted returns false
         if (isAddition && beforeScheduledTaskSubmitted(deadlineNanos)) {
             super.executeScheduledRunnable(runnable, isAddition, deadlineNanos);
         } else {
+            // 如果这是一个删除任务，或者beduledtaskcommitted返回false，不需要唤醒
             super.executeScheduledRunnable(new NonWakeupRunnable() {
                 @Override
                 public void run() {
@@ -707,6 +739,9 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     @Override
     public Future<?> shutdownGracefully(long quietPeriod, long timeout, TimeUnit unit) {
+        // 首先进行参数及其状态判断，quietPeriod此处值为2s，表明在quietPeriod这么长的时间段内如果没有请求提交那么直接关闭服务，
+        // 如果有，则重新开始计算时间直到在quietPeriod时间段内没有请求提交或者超时，超时时间为timeout，所以quietPeriod必须大于0，
+        // timeout必须大于quietPeriod，接着判断服务是否已经关闭，如果已经有现成执行了关闭操作了，那么就直接放回terminationFuture
         if (quietPeriod < 0) {
             throw new IllegalArgumentException("quietPeriod: " + quietPeriod + " (expected >= 0)");
         }
@@ -741,7 +776,9 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                         newState = ST_SHUTTING_DOWN;
                         break;
                     default:
+                        // 其他线程已修改好线程状态
                         newState = oldState;
+                        // 已经有线程唤醒，所以不用再唤醒
                         wakeup = false;
                 }
             }
@@ -836,8 +873,10 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     /**
      * Confirm that the shutdown if the instance should be done now!
+     * <p>如果现在就应该关闭实例，请确认!</p>
      */
     protected boolean confirmShutdown() {
+        // 没有调用shutdown相关的方法直接返回
         if (!isShuttingDown()) {
             return false;
         }
@@ -848,10 +887,12 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
         cancelScheduledTasks();
 
+        // 优雅关闭开始时间，这也是一个标记
         if (gracefulShutdownStartTime == 0) {
             gracefulShutdownStartTime = ScheduledFutureTask.nanoTime();
         }
 
+        // 执行完普通任务或者没有普通任务时，执行完shutdownHook任务
         if (runAllTasks() || runShutdownHooks()) {
             if (isShutdown()) {
                 // Executor shut down - no new tasks anymore.
@@ -864,16 +905,19 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
             if (gracefulShutdownQuietPeriod == 0) {
                 return true;
             }
+            // 优雅关闭但有未执行任务，唤醒线程执行
             taskQueue.offer(WAKEUP_TASK);
             return false;
         }
 
         final long nanoTime = ScheduledFutureTask.nanoTime();
 
+        // shutdown()方法调用直接返回，优雅关闭截止时间到也返回
         if (isShutdown() || nanoTime - gracefulShutdownStartTime > gracefulShutdownTimeout) {
             return true;
         }
 
+        // 在静默期间每100ms唤醒线程执行期间提交的任务
         if (nanoTime - lastExecutionTime <= gracefulShutdownQuietPeriod) {
             // Check if any tasks were added to the queue every 100ms.
             // TODO: Change the behavior of takeTask() so that it returns on timeout.
@@ -889,6 +933,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
         // No tasks were added for last quiet period - hopefully safe to shut down.
         // (Hopefully because we really cannot make a guarantee that there will be no execute() calls by a user.)
+        // 静默时间内没有任务提交，可以优雅关闭，此时若用户又提交任务则不会被执行
         return true;
     }
 
@@ -1067,6 +1112,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     private void doStartThread() {
         assert thread == null;
+        // 会创建一个新的线程执行
         executor.execute(new Runnable() {
             @Override
             public void run() {
@@ -1078,20 +1124,23 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                 boolean success = false;
                 updateLastExecutionTime();
                 try {
+                    /**子类重写，用于循环处理channel事件 {@link io.netty.channel.nio.NioEventLoop.run()}*/
                     SingleThreadEventExecutor.this.run();
                     success = true;
                 } catch (Throwable t) {
                     logger.warn("Unexpected exception from an event executor: ", t);
                 } finally {
                     for (;;) {
+                        // 用户调用了关闭的方法或者抛出异常
                         int oldState = state;
                         if (oldState >= ST_SHUTTING_DOWN || STATE_UPDATER.compareAndSet(
                                 SingleThreadEventExecutor.this, oldState, ST_SHUTTING_DOWN)) {
-                            break;
+                            break;// 抛出异常也将状态置为ST_SHUTTING_DOWN
                         }
                     }
 
                     // Check if confirmShutdown() was called at the end of the loop.
+                    // time=0，说明confirmShutdown()方法没有调用，记录日志
                     if (success && gracefulShutdownStartTime == 0) {
                         if (logger.isErrorEnabled()) {
                             logger.error("Buggy " + EventExecutor.class.getSimpleName() + " implementation; " +
@@ -1103,6 +1152,8 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                     try {
                         // Run all remaining tasks and shutdown hooks.
                         for (;;) {
+                            // 抛出异常时，将普通任务和shutdownHook任务执行完毕
+                            // 正常关闭时，结合前述的循环跳出条件
                             if (confirmShutdown()) {
                                 break;
                             }
@@ -1117,6 +1168,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                             // See https://github.com/netty/netty/issues/6596.
                             FastThreadLocal.removeAll();
 
+                            // 线程状态设置为ST_TERMINATED，线程终止
                             STATE_UPDATER.set(SingleThreadEventExecutor.this, ST_TERMINATED);
                             threadLock.countDown();
                             if (logger.isWarnEnabled() && !taskQueue.isEmpty()) {
