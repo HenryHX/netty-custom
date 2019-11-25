@@ -21,6 +21,13 @@ import java.nio.channels.Selector;
 import java.nio.channels.spi.SelectorProvider;
 import java.util.Set;
 
+/**
+ * SelectedSelectionKeySetSelector中持有unwrappedSelector实例，并作为unwrappedSelector的代理类，提供Selector所需要的方法，
+ * 而Selector相关的操作底层实际上都是由unwrappedSelector来完成的，只是在操作中增加了对selectionKeys进行相应的设置。
+ * <p></p>
+ * SelectedSelectionKeySetSelector中除了持有unwrappedSelector实例外还持有一个SelectedSelectionKeySet对象。
+ * 该对象是Netty提供的一个可以‘代替’Selector selectedKeys的对象。
+ */
 final class SelectedSelectionKeySetSelector extends Selector {
     private final SelectedSelectionKeySet selectionKeys;
     private final Selector delegate;

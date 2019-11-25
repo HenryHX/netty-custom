@@ -37,6 +37,11 @@ public abstract class SingleThreadEventLoop extends SingleThreadEventExecutor im
     protected static final int DEFAULT_MAX_PENDING_TASKS = Math.max(16,
             SystemPropertyUtil.getInt("io.netty.eventLoop.maxPendingTasks", Integer.MAX_VALUE));
 
+    /**
+     * 这个也是任务队列，这个任务通过SingleThreadEventLoop.executeAfterEventLoopIteration方法添加一个任务
+     * (但是目前没看到使用的地方，应该是Netty开放的扩展点)，和taskQueue不同的是，
+     * 他的优先级没有taskQueue高，看下执行任务的代码，runAllTasks中当taskQueue的任务执行完毕或者时间限制到达后会调用afterRunningAllTasks方法
+     */
     private final Queue<Runnable> tailTasks;
 
     protected SingleThreadEventLoop(EventLoopGroup parent, ThreadFactory threadFactory, boolean addTaskWakesUp) {
@@ -106,7 +111,10 @@ public abstract class SingleThreadEventLoop extends SingleThreadEventExecutor im
 
     /**
      * Adds a task to be run once at the end of next (or current) {@code eventloop} iteration.
-     *
+     * <p>添加一个任务，在下一次(或当前){@code eventloop}迭代结束时运行一次。</p>
+     * <p>
+     * NioEventLoop可以通过父类SingleTheadEventLoop的executeAfterEventLoopIteration
+     * 方法向tailTasks中添加收尾任务，比如，你想统计一下一次执行一次任务循环花了多长时间就可以调用此方法
      * @param task to be added.
      */
     @UnstableApi
@@ -156,6 +164,10 @@ public abstract class SingleThreadEventLoop extends SingleThreadEventExecutor im
      * Returns the number of {@link Channel}s registered with this {@link EventLoop} or {@code -1}
      * if operation is not supported. The returned value is not guaranteed to be exact accurate and
      * should be viewed as a best effort.
+     * <p>
+     * 返回此{@link EventLoop}注册的{@link Channel}的数量
+     * 如果不支持此操作，则返回{@code -1}。
+     * 不能保证返回的值是精确的，应该将其视为最佳效果。
      */
     @UnstableApi
     public int registeredChannels() {

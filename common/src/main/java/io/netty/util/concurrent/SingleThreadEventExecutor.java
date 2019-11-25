@@ -94,7 +94,10 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     private final CountDownLatch threadLock = new CountDownLatch(1);
     private final Set<Runnable> shutdownHooks = new LinkedHashSet<Runnable>();
-    /**当且仅当调用{@link #addTask(Runnable)}需要唤醒执行线程时，设置为{@code true}*/
+    /**当且仅当调用{@link #addTask(Runnable)}可以唤醒执行线程时，设置为{@code true}*/
+    // 调用addTask(Runnable)添加任务时是否能唤醒线程决定了addTaskWakesUp 是true还是false。
+    //      如果addTask(Runnable)添加任务时能唤醒线程，那么addTaskWakesUp=true；
+    //      如果addTask(Runnable)添加任务时不能唤醒线程，那么addTaskWakesUp=false；
     private final boolean addTaskWakesUp;
     /**拒绝新任务之前的最大挂起任务数。*/
     private final int maxPendingTasks;
@@ -1160,6 +1163,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                         }
                     } finally {
                         try {
+                            // 默认实现什么也不做，NioEventLoop覆盖了基类，实现关闭NioEventLoop持有的selector：
                             cleanup();
                         } finally {
                             // Lets remove all FastThreadLocals for the Thread as we are about to terminate and notify

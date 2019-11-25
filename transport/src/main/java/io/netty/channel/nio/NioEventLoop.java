@@ -69,8 +69,17 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             SystemPropertyUtil.getBoolean("io.netty.noKeySetOptimization", false);
 
     private static final int MIN_PREMATURE_SELECTOR_RETURNS = 3;
+    // 标识Selector空轮询的阈值，当超过这个阈值的话则需要重构Selector。
+    // 如果有设置系统属性”io.netty.selectorAutoRebuildThreshold”，
+    //      并且该属性值大于MIN_PREMATURE_SELECTOR_RETURNS(即，3)，那么该属性值就为阈值；
+    //      如果该属性值小于MIN_PREMATURE_SELECTOR_RETURNS(即，3)，那么阈值为0；
+    //      如果没有设置系统属性”io.netty.selectorAutoRebuildThreshold”，那么阈值为512，即，默认情况下阈值为512。
     private static final int SELECTOR_AUTO_REBUILD_THRESHOLD;
 
+    /**
+     * 在事件循环里用于选择策略(selectStrategy)
+     * 获取选择操作返回值，用于判断注册到当前选择器的选择通道是否有IO事件就绪
+     */
     private final IntSupplier selectNowSupplier = new IntSupplier() {
         @Override
         public int get() throws Exception {
@@ -83,6 +92,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     // See:
     // - http://bugs.sun.com/view_bug.do?bug_id=6427854
     // - https://github.com/netty/netty/issues/203
+    // 解决在java6 中 NIO Selector.open()可能抛出NPE异常的问题。
     static {
         final String key = "sun.nio.ch.bugLevel";
         final String bugLevel = SystemPropertyUtil.get(key);
@@ -100,6 +110,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             }
         }
 
+        // 在事件循环时解决JDK NIO类库的epoll bug，先设置好SELECTOR_AUTO_REBUILD_THRESHOLD，即selector空轮询的阈值
         int selectorAutoRebuildThreshold = SystemPropertyUtil.getInt("io.netty.selectorAutoRebuildThreshold", 512);
         if (selectorAutoRebuildThreshold < MIN_PREMATURE_SELECTOR_RETURNS) {
             selectorAutoRebuildThreshold = 0;
@@ -127,12 +138,20 @@ public final class NioEventLoop extends SingleThreadEventLoop {
      * break out of its selection process. In our case we use a timeout for
      * the select method and the select method will block for that time unless
      * waken up.
+     * <p>
+     * 一个原子类的Boolean标识，用于控制决定一个阻塞着的Selector.select是否应该结束它的选择操作。
+     * 在我们的例子中，我们为select方法使用了超时，而select方法将在此期间阻塞，除非唤醒。
      */
     private final AtomicBoolean wakenUp = new AtomicBoolean();
     private volatile long nextWakeupTime = Long.MAX_VALUE;
 
     private final SelectStrategy selectStrategy;
 
+    /**
+     * 在事件循环中期待用于处理I/O操作时间的百分比。默认为50%。
+     * 也就是说，在事件循环中默认情况下用于处理I/O操作的时间和用于处理任务的时间百分比都为50%，
+     * 即，用于处理I/O操作的时间和用于处理任务的时间时一样的。用户可以根据实际情况来修改这个比率。
+     */
     private volatile int ioRatio = 50;
     private int cancelledKeys;
     private boolean needsToSelectAgain;
@@ -149,6 +168,8 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             throw new NullPointerException("selectStrategy");
         }
         provider = selectorProvider;
+        // 开启Selector，构造SelectorTuple实例，SelectorTuple是一个封装了原始selector对象和封装后selector对象
+        // (即，SelectedSelectionKeySetSelector对象)的类
         final SelectorTuple selectorTuple = openSelector();
         selector = selectorTuple.selector;
         unwrappedSelector = selectorTuple.unwrappedSelector;
@@ -214,6 +235,8 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             return new SelectorTuple(unwrappedSelector);
         }
 
+        // 通过反射机制将程序构建的SelectedSelectionKeySet对象给设置到了Selector内部的selectedKeys、publicSelectedKeys属性。
+        // 这使Selector中所有对selectedKeys、publicSelectedKeys的操作实际上就是对SelectedSelectionKeySet的操作。
         final Class<?> selectorImplClass = (Class<?>) maybeSelectorImplClass;
         final SelectedSelectionKeySet selectedKeySet = new SelectedSelectionKeySet();
 
@@ -785,9 +808,11 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
     int selectNow() throws IOException {
         try {
+            // 直接委托个Nio事件循环选择器
             return selector.selectNow();
         } finally {
             // restore wakeup state if needed
+            // 如果选择操作后，需要唤醒等待选择操作的线程，则唤醒
             if (wakenUp.get()) {
                 selector.wakeup();
             }
