@@ -1127,7 +1127,10 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                 boolean success = false;
                 updateLastExecutionTime();
                 try {
-                    /**子类重写，用于循环处理channel事件 {@link io.netty.channel.nio.NioEventLoop.run()}*/
+                    /**
+                     * 子类重写，用于循环处理channel事件 {@link io.netty.channel.nio.NioEventLoop.run()}
+                     * 如果线程池已经处于中断状态，此时run方法中会执行confirmShutdown()
+                     */
                     SingleThreadEventExecutor.this.run();
                     success = true;
                 } catch (Throwable t) {
