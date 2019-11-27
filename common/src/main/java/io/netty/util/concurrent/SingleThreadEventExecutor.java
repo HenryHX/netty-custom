@@ -1141,7 +1141,8 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                         int oldState = state;
                         if (oldState >= ST_SHUTTING_DOWN || STATE_UPDATER.compareAndSet(
                                 SingleThreadEventExecutor.this, oldState, ST_SHUTTING_DOWN)) {
-                            break;// 抛出异常也将状态置为ST_SHUTTING_DOWN
+                            // 抛出异常也将状态置为ST_SHUTTING_DOWN
+                            break;
                         }
                     }
 

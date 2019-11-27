@@ -24,17 +24,29 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * A {@link ThreadFactory} implementation with a simple naming rule.
+ * <p>默认的线程工厂</p>
  */
 public class DefaultThreadFactory implements ThreadFactory {
-
+    // 线程组的id，这里组代表是工厂，因为工厂是可以new的，如果不分配，到时候很难看出是哪里个工厂创建的线程
+    // 而此处采用了static代表此属性是跟类走的而不是对象，所以每次创建一个工厂pool都会增加一
     private static final AtomicInteger poolId = new AtomicInteger();
 
+    // 创建线程的自增id
     private final AtomicInteger nextId = new AtomicInteger();
+    // 线程名前缀
     private final String prefix;
+    // 是否是守护线程
     private final boolean daemon;
+    // 当前线程的优先级
     private final int priority;
+    // 创建线程所属的线程组，可以为null系统会使用默认的线程组
     protected final ThreadGroup threadGroup;
 
+    // 下面是线程工厂的构造这里统一说明一下
+    // poolType 是Class 类型他最终会被转换成类名用于poolName的使用
+    // poolName 线程名但是不是完整的他会拼接一些其他数据比如poolId
+    // daemon 是否为守护线程除非手动设置否则默认都是false
+    // priority 线程的优先级 默认是NORM_PRIORITY 也是系统默认的
     public DefaultThreadFactory(Class<?> poolType) {
         this(poolType, false, Thread.NORM_PRIORITY);
     }
@@ -63,12 +75,18 @@ public class DefaultThreadFactory implements ThreadFactory {
         this(toPoolName(poolType), daemon, priority);
     }
 
+    /**
+     * 此方法是将Class类型的poolType获取类名作用于线程名
+     */
     public static String toPoolName(Class<?> poolType) {
         if (poolType == null) {
             throw new NullPointerException("poolType");
         }
 
         String poolName = StringUtil.simpleClassName(poolType);
+        // 这里判断他的长度如果是0个长度则返回unknown如果一个长度则将它最小化然后返回
+        // 如果大于一个长度则判断第一个字符是不是大写，第二个字符是不是小写，如果是则把第一个字符小写拼接上后面的字符返回
+        // 否则直接返回获取到的类名
         switch (poolName.length()) {
             case 0:
                 return "unknown";
@@ -83,6 +101,9 @@ public class DefaultThreadFactory implements ThreadFactory {
         }
     }
 
+    /**
+     * threadGroup 这个参数是线程组可以为null在这里也并没有任何使用的意义，都在创建线程后的线程设置
+     */
     public DefaultThreadFactory(String poolName, boolean daemon, int priority, ThreadGroup threadGroup) {
         if (poolName == null) {
             throw new NullPointerException("poolName");
@@ -98,6 +119,9 @@ public class DefaultThreadFactory implements ThreadFactory {
         this.threadGroup = threadGroup;
     }
 
+    /**
+     * 将线程创建的group逻辑在这里操作了一遍，为了防止组为null之前说过可以传入null因为系统会自动设置而系统设置方式和此处一样
+     */
     public DefaultThreadFactory(String poolName, boolean daemon, int priority) {
         this(poolName, daemon, priority, System.getSecurityManager() == null ?
                 Thread.currentThread().getThreadGroup() : System.getSecurityManager().getThreadGroup());
@@ -105,6 +129,7 @@ public class DefaultThreadFactory implements ThreadFactory {
 
     @Override
     public Thread newThread(Runnable r) {
+        //  这里可以看出它使用了一个静态方法做了包装runnable 然后使用前面工厂的前缀名拼接了线程的id号
         Thread t = newThread(FastThreadLocalRunnable.wrap(r), prefix + nextId.incrementAndGet());
         try {
             if (t.isDaemon() != daemon) {
@@ -120,6 +145,9 @@ public class DefaultThreadFactory implements ThreadFactory {
         return t;
     }
 
+    /**
+     * 实际上就是创建了一个FastThreadLocalThread线程的实例
+     */
     protected Thread newThread(Runnable r, String name) {
         return new FastThreadLocalThread(threadGroup, r, name);
     }

@@ -724,6 +724,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     }
 
     private void processSelectedKey(SelectionKey k, AbstractNioChannel ch) {
+        // 获取 Channel 的 NioUnsafe，所有的读写等操作都在 Channel 的 unsafe 类中操作
         final AbstractNioChannel.NioUnsafe unsafe = ch.unsafe();
         // 首先检查当前的SelectionKey是否有效(仅当SelectionKey从Selector上注销的时候，该SelectionKey会为无效状态)
         if (!k.isValid()) {
@@ -779,13 +780,20 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             }
 
             // Process OP_WRITE first as we may be able to write some queued buffers and so free memory.
+            // 首先处理OP_WRITE，因为我们可以写一些队列中的缓冲区，从而释放内存。
+            // 如果是 OP_WRITE 事件，说明可以继续向 Channel 中写入数据，当写完数据后把 OP_WRITE 事件取消掉。
             if ((readyOps & SelectionKey.OP_WRITE) != 0) {
                 // Call forceFlush which will also take care of clear the OP_WRITE once there is nothing left to write
+                // 调用forceFlush，它也会在没有需要写的时候清除OP_WRITE
                 ch.unsafe().forceFlush();
             }
 
             // Also check for readOps of 0 to workaround possible JDK bug which may otherwise lead
-            // to a spin loop
+            // to a spin loop 还要检查readOps为0，以解决可能导致自旋循环的JDK bug
+            // 如果是 OP_READ 或 OP_ACCEPT 事件，则调用 unsafe.read() 进行读取数据。
+            // 当 NioEventLoop 读取数据的时候会委托给 Channel 中的 unsafe 对象进行读取数据。
+            // Unsafe中真正读取数据是交由 ChannelPipeline 来处理。
+            // ChannelPipeline 中是注册的我们自定义的 Handler，然后由 ChannelPipeline中的 Handler 一个接一个的处理请求的数据。
             if ((readyOps & (SelectionKey.OP_READ | SelectionKey.OP_ACCEPT)) != 0 || readyOps == 0) {
                 unsafe.read();
             }

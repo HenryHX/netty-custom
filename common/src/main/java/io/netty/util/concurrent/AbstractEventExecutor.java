@@ -22,7 +22,10 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
-import java.util.concurrent.*;
+import java.util.concurrent.AbstractExecutorService;
+import java.util.concurrent.Callable;
+import java.util.concurrent.RunnableFuture;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Abstract base class for {@link EventExecutor} implementations.
@@ -132,7 +135,7 @@ public abstract class AbstractEventExecutor extends AbstractExecutorService impl
 
     /**
      * {@link AbstractExecutorService#newTaskFor}设计成protected就是为了让子类覆盖的
-     * <p>RunnableFuture的实现类从JDK的{@link FutureTask}换成了netty自己的{@link PromiseTask}.</p>
+     * <p>RunnableFuture的实现类从JDK的{@link java.util.concurrent.FutureTask}换成了netty自己的{@link PromiseTask}.</p>
      */
     @Override
     protected final <T> RunnableFuture<T> newTaskFor(Runnable runnable, T value) {
