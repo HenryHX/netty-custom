@@ -78,6 +78,7 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
 
     /**
      * Returns the globally unique identifier of this {@link Channel}.
+     * 标识唯一身份信息
      */
     ChannelId id();
 
@@ -106,6 +107,7 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
 
     /**
      * Returns {@code true} if the {@link Channel} is registered with an {@link EventLoop}.
+     * <p>如果{@link Channel}用{@link EventLoop}注册，则返回{@code true}</p>
      */
     boolean isRegistered();
 
@@ -124,6 +126,9 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
      * {@link SocketAddress} is supposed to be down-cast into more concrete
      * type such as {@link InetSocketAddress} to retrieve the detailed
      * information.
+     *
+     * <p>
+     * 返回此通道绑定到的本地地址。返回的{@link SocketAddress}应该向下转换为更具体的类型，例如{@link InetSocketAddress}来检索详细信息
      *
      * @return the local address of this channel.
      *         {@code null} if this channel is not bound.
@@ -157,23 +162,32 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
      * requested write operation immediately.  Any write requests made when
      * this method returns {@code false} are queued until the I/O thread is
      * ready to process the queued write requests.
+     * <p>
+     * 当且仅当I/O线程将立即执行请求的写操作时，返回{@code true}。
+     * 当此方法返回{@code false}时发出的任何写请求都将排队，直到I/O线程准备好处理排队的写请求。
      */
     boolean isWritable();
 
     /**
      * Get how many bytes can be written until {@link #isWritable()} returns {@code false}.
      * This quantity will always be non-negative. If {@link #isWritable()} is {@code false} then 0.
+     * <p>
+     * 获取在{@link #isWritable()}返回{@code false}之前可以写入多少字节。这个量总是非负的。如果{@link #isWritable()}是{@code false}，则0。
      */
     long bytesBeforeUnwritable();
 
     /**
      * Get how many bytes must be drained from underlying buffers until {@link #isWritable()} returns {@code true}.
      * This quantity will always be non-negative. If {@link #isWritable()} is {@code true} then 0.
+     * <p>
+     * 获取在{@link #isWritable()}返回{@code true}之前必须从底层缓冲区抽取多少字节。
+     * 这个量总是非负的。如果{@link #isWritable()}是{@code true}，那么0。
      */
     long bytesBeforeWritable();
 
     /**
      * Returns an <em>internal-use-only</em> object that provides unsafe operations.
+     * <p>返回一个仅供内部使用的unsafe对象， Chanel上 IO数据的读写都是借助这个类完成的</p>
      */
     Unsafe unsafe();
 
@@ -184,6 +198,7 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
 
     /**
      * Return the assigned {@link ByteBufAllocator} which will be used to allocate {@link ByteBuf}s.
+     * <p>返回分配的{@link ByteBufAllocator}，它将用于分配{@link ByteBuf}。</p>
      */
     ByteBufAllocator alloc();
 
@@ -197,6 +212,7 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
      * <em>Unsafe</em> operations that should <em>never</em> be called from user-code. These methods
      * are only provided to implement the actual transport, and must be invoked from an I/O thread except for the
      * following methods:
+     * <p><em>Unsafe</em>操作应该<em>永远不会</em>从用户代码调用。这些方法仅用于实现真实的数据传输，除了以下方法，其他方法都必须从I/O线程调用，:</p>
      * <ul>
      *   <li>{@link #localAddress()}</li>
      *   <li>{@link #remoteAddress()}</li>
@@ -217,6 +233,7 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
         /**
          * Return the {@link SocketAddress} to which is bound local or
          * {@code null} if none.
+         * <p>返回绑定到本地的{@link SocketAddress}</p>
          */
         SocketAddress localAddress();
 
@@ -262,6 +279,7 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
         /**
          * Closes the {@link Channel} immediately without firing any events.  Probably only useful
          * when registration attempt failed.
+         * <p>立即关闭{@link Channel}而不触发任何事件。可能只在注册失败时有用。</p>
          */
         void closeForcibly();
 
@@ -274,6 +292,9 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
         /**
          * Schedules a read operation that fills the inbound buffer of the first {@link ChannelInboundHandler} in the
          * {@link ChannelPipeline}.  If there's already a pending read operation, this method does nothing.
+         * <p>
+         * 在{@link ChannelPipeline}中，安排一个读操作 以填充第一个{@link ChannelInboundHandler}的inbound缓冲区。
+         * 如果已经有一个挂起的读操作，则此方法不执行任何操作。
          */
         void beginRead();
 
@@ -291,11 +312,15 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
          * Return a special ChannelPromise which can be reused and passed to the operations in {@link Unsafe}.
          * It will never be notified of a success or error and so is only a placeholder for operations
          * that take a {@link ChannelPromise} as argument but for which you not want to get notified.
+         * <p>
+         * 返回一个特殊的ChannelPromise，它可以被重用并传递给{@link Unsafe}中的api操作。
+         * 它永远不会得到成功或错误的通知，因此它只是一个占位符，用于以{@link ChannelPromise}作为参数的操作，但您不希望得到通知。
          */
         ChannelPromise voidPromise();
 
         /**
          * Returns the {@link ChannelOutboundBuffer} of the {@link Channel} where the pending write requests are stored.
+         * <p>返回{@link Channel}的{@link ChannelOutboundBuffer}，其中存储了暂挂的写请求。</p>
          */
         ChannelOutboundBuffer outboundBuffer();
     }

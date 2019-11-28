@@ -377,6 +377,9 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         boolean selected = false;
         for (;;) {
             try {
+                // 这里就是JAVA NIO中的注册
+                // 这里的interestOps=0表示完成注册操作，不对任何事件感兴趣
+                // 第三个参数this比较重要，用于java的channel和netty的channel间的绑定关系
                 selectionKey = javaChannel().register(eventLoop().unwrappedSelector(), 0, this);
                 return;
             } catch (CancelledKeyException e) {
