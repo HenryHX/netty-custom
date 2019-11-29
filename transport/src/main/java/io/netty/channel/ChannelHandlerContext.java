@@ -29,10 +29,15 @@ import java.nio.channels.Channels;
  * and other handlers. Among other things a handler can notify the next {@link ChannelHandler} in the
  * {@link ChannelPipeline} as well as modify the {@link ChannelPipeline} it belongs to dynamically.
  *
+ * <p>
+ * 允许{@link ChannelHandler}与它的{@link ChannelPipeline}和其他handlers交互。
+ * a handler可以在{@link ChannelPipeline}中通知下一个{@link ChannelHandler}，也可以动态修改它所属的{@link ChannelPipeline}。
+ *
  * <h3>Notify</h3>
  *
  * You can notify the closest handler in the same {@link ChannelPipeline} by calling one of the various methods
  * provided here.
+ * <p>可以通过调用这里提供的各种方法之一，在同一个{@link ChannelPipeline}中通知最近的处理程序。</p>
  *
  * Please refer to {@link ChannelPipeline} to understand how an event flows.
  *
@@ -41,6 +46,8 @@ import java.nio.channels.Channels;
  * You can get the {@link ChannelPipeline} your handler belongs to by calling
  * {@link #pipeline()}.  A non-trivial application could insert, remove, or
  * replace handlers in the pipeline dynamically at runtime.
+ * <p>
+ * 您可以通过调用{@link #pipeline()}来获得handler所属的{@link ChannelPipeline}。一个重要的应用程序可以在运行时动态地插入、删除或替换管道中的handlers
  *
  * <h3>Retrieving for later use</h3>
  *
@@ -63,6 +70,7 @@ import java.nio.channels.Channels;
  * </pre>
  *
  * <h3>Storing stateful information</h3>
+ * 存储状态信息
  *
  * {@link #attr(AttributeKey)} allow you to
  * store and access stateful information that is related with a handler and its
@@ -81,6 +89,9 @@ import java.nio.channels.Channels;
  * For example, the following handler will have as many independent {@link AttributeKey}s
  * as how many times it is added to pipelines, regardless if it is added to the
  * same pipeline multiple times or added to different pipelines multiple times:
+ * <p>
+ *     例如，下面的handler拥有的独立{@link AttributeKey}数量将与它添加到管道中的次数相同，而不管它是多次添加到同一管道中，还是多次添加到不同管道中
+ * </p>
  * <pre>
  * public class FactorialHandler extends {@link ChannelInboundHandlerAdapter} {
  *
@@ -126,6 +137,8 @@ public interface ChannelHandlerContext extends AttributeMap, ChannelInboundInvok
 
     /**
      * Return the {@link Channel} which is bound to the {@link ChannelHandlerContext}.
+     * <p></p>
+     * 通过${@link DefaultChannelPipeline#channel()}获取handler关联的Channel
      */
     Channel channel();
 
@@ -138,6 +151,8 @@ public interface ChannelHandlerContext extends AttributeMap, ChannelInboundInvok
      * The unique name of the {@link ChannelHandlerContext}.The name was used when then {@link ChannelHandler}
      * was added to the {@link ChannelPipeline}. This name can also be used to access the registered
      * {@link ChannelHandler} from the {@link ChannelPipeline}.
+     * <p></p>
+     * ChannelPipeline 中维护了 ChannelHandlerContext链表， 可以根据name找到指定的context
      */
     String name();
 
@@ -201,7 +216,8 @@ public interface ChannelHandlerContext extends AttributeMap, ChannelInboundInvok
      */
     @Deprecated
     @Override
-    <T> Attribute<T> attr(AttributeKey<T> key);
+    <T> Attribute<T>
+    attr(AttributeKey<T> key);
 
     /**
      * @deprecated Use {@link Channel#hasAttr(AttributeKey)}

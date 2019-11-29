@@ -53,6 +53,9 @@ public final class DefaultEventExecutor extends SingleThreadEventExecutor {
         super(parent, threadFactory, true, maxPendingTasks, rejectedExecutionHandler);
     }
 
+    /**
+     * taskQueue默认使用LinkedBlockingQueue，所以addTaskWakesUp为true
+     */
     public DefaultEventExecutor(EventExecutorGroup parent, Executor executor, int maxPendingTasks,
                                 RejectedExecutionHandler rejectedExecutionHandler) {
         super(parent, executor, true, maxPendingTasks, rejectedExecutionHandler);

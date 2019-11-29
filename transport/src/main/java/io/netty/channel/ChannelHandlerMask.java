@@ -36,6 +36,7 @@ final class ChannelHandlerMask {
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(ChannelHandlerMask.class);
 
     // Using to mask which methods must be called for a ChannelHandler.
+    // 用于屏蔽哪些方法必须为ChannelHandler调用的。
     static final int MASK_EXCEPTION_CAUGHT = 1;
     static final int MASK_CHANNEL_REGISTERED = 1 << 1;
     static final int MASK_CHANNEL_UNREGISTERED = 1 << 2;
@@ -74,6 +75,7 @@ final class ChannelHandlerMask {
     static int mask(Class<? extends ChannelHandler> clazz) {
         // Try to obtain the mask from the cache first. If this fails calculate it and put it in the cache for fast
         // lookup in the future.
+        // 尝试首先从缓存中获取掩码。如果失败，计算它并把它放在缓存中，以便将来快速查找。
         Map<Class<? extends ChannelHandler>, Integer> cache = MASKS.get();
         Integer mask = cache.get(clazz);
         if (mask == null) {
@@ -161,6 +163,9 @@ final class ChannelHandlerMask {
         return mask;
     }
 
+    /**
+     * 判断handlerType对应的ChannelHandler类是否有methodName方法，同时该方法还有Skip注解
+     */
     @SuppressWarnings("rawtypes")
     private static boolean isSkippable(
             final Class<?> handlerType, final String methodName, final Class<?>... paramTypes) throws Exception {

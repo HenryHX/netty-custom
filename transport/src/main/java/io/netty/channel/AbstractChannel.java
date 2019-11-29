@@ -43,8 +43,10 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(AbstractChannel.class);
 
+    // 这是channel的父channel
     private final Channel parent;
     private final ChannelId id;
+    // unsafe类里实现了具体的连接与写数据，之所以命名为unsafe是不希望外部使用，并非是不安全的
     private final Unsafe unsafe;
     private final DefaultChannelPipeline pipeline;
     private final VoidChannelPromise unsafeVoidPromise = new VoidChannelPromise(this, false);
