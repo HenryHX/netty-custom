@@ -109,6 +109,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     // Lazily instantiated tasks used to trigger events to a handler with different executor.
     // There is no need to make this volatile as at worse it will just create a few more instances then needed.
     // 延迟实例化的任务，用于将事件触发到具有不同executor的handler。没有必要用volatile来修饰，因为在最坏的情况下，它只会在需要的时候创建更多的实例。
+    // 保存nextContext可以执行的部分任务，方便调用时不需要重新实例化
     private Tasks invokeTasks;
 
     private volatile int handlerState = INIT;
@@ -580,6 +581,8 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         if (!channel().metadata().hasDisconnect()) {
             // Translate disconnect to close if the channel has no notion of disconnect-reconnect.
             // So far, UDP/IP is the only transport that has such behavior.
+            // 如果通道没有断开-重新连接的概念，则将断开转换为关闭。
+            // 到目前为止，UDP/IP是唯一具有这种行为的传输。
             return close(promise);
         }
         if (isNotValidPromise(promise, false)) {
@@ -850,6 +853,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
             return;
         }
 
+        // handler方法执行异常，开始往后传播异常，调用fireExceptionCaught(cause)
         invokeExceptionCaught(cause);
     }
 
@@ -905,7 +909,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         if (promise.isDone()) {
             // Check if the promise was cancelled and if so signal that the processing of the operation
             // should not be performed.
-            //
+            // 检查promise是否被取消，如果是，则表示不应该执行操作的处理。
             // See https://github.com/netty/netty/issues/2349
             if (promise.isCancelled()) {
                 return true;

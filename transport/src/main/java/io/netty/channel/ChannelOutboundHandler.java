@@ -55,6 +55,7 @@ public interface ChannelOutboundHandler extends ChannelHandler {
 
     /**
      * Called once a close operation is made.
+     * 一旦关闭操作被调用。
      *
      * @param ctx               the {@link ChannelHandlerContext} for which the close operation is made
      * @param promise           the {@link ChannelPromise} to notify once the operation completes

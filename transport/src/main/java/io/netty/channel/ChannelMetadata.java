@@ -57,6 +57,9 @@ public final class ChannelMetadata {
      * Returns {@code true} if and only if the channel has the {@code disconnect()} operation
      * that allows a user to disconnect and then call {@link Channel#connect(SocketAddress)} again,
      * such as UDP/IP.
+     * <p></p>
+     * 当且仅当channel具有{@code disconnect()}操作，允许用户断开连接，
+     * 然后再次调用{@link Channel#connect(SocketAddress)}，如UDP/IP，则返回{@code true}。
      */
     public boolean hasDisconnect() {
         return hasDisconnect;
