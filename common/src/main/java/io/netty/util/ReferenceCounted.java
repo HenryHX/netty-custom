@@ -59,6 +59,7 @@ public interface ReferenceCounted {
      * <p></p>
      * 记录此对象的当前访问位置，并附加一个用于调试目的的任意信息。
      * 如果此对象被确定为泄漏，则此操作记录的信息将通过{@link ResourceLeakDetector}提供给您。
+     *
      */
     ReferenceCounted touch(Object hint);
 

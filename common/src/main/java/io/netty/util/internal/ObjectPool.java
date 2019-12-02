@@ -40,6 +40,7 @@ public abstract class ObjectPool<T> {
     public interface Handle<T> {
         /**
          * Recycle the {@link Object} if possible and so make it ready to be reused.
+         * <p>如果可能的话，回收{@link Object}，这样就可以重用它了。</p>
          */
         void recycle(T self);
     }

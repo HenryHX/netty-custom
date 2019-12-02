@@ -807,6 +807,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
 
         final AbstractChannelHandlerContext next = findContextOutbound(flush ?
                 (MASK_WRITE | MASK_FLUSH) : MASK_WRITE);
+        // 方便netty记录未释放的资源位置和信息，将AbstractChannelHandlerContext touch到 msg
         final Object m = pipeline.touch(msg, next);
         EventExecutor executor = next.executor();
         if (executor.inEventLoop()) {
@@ -818,6 +819,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         } else {
             final AbstractWriteTask task;
             if (flush) {
+                // 利用对象池，创建可循环使用的Task对象
                 task = WriteAndFlushTask.newInstance(next, m, promise);
             }  else {
                 task = WriteTask.newInstance(next, m, promise);
@@ -1071,10 +1073,12 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
 
     abstract static class AbstractWriteTask implements Runnable {
 
+        // 提交时估计任务大小
         private static final boolean ESTIMATE_TASK_SIZE_ON_SUBMIT =
                 SystemPropertyUtil.getBoolean("io.netty.transport.estimateSizeOnSubmit", true);
 
         // Assuming a 64-bit JVM, 16 bytes object header, 3 reference fields and one int field, plus alignment
+        // 假设一个64位的JVM, 16字节的对象头，3个引用字段和1个int字段，加上对齐
         private static final int WRITE_TASK_OVERHEAD =
                 SystemPropertyUtil.getInt("io.netty.transport.writeTaskSizeOverhead", 48);
 

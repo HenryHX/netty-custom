@@ -73,6 +73,8 @@ public final class ReferenceCountUtil {
      * <p></p>
      * 如果指定的消息实现了{@link ReferenceCounted}，则尝试调用{@link ReferenceCounted#touch(Object)}。
      * 如果指定的消息没有实现{@link ReferenceCounted}，则此方法不执行任何操作。
+     *
+     * @param hint {@link io.netty.channel.AbstractChannelHandlerContext}
      */
     @SuppressWarnings("unchecked")
     public static <T> T touch(T msg, Object hint) {
