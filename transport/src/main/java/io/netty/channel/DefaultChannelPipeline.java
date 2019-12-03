@@ -146,21 +146,28 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         return new DefaultChannelHandlerContext(this, childExecutor(group), name, handler);
     }
 
+    /**
+     * 为pipeline中的每个handler绑定一个新的线程EventExecutor，如果不需要在新线程执行操作，则返回null，默认使用channel().eventLoop()
+     */
     private EventExecutor childExecutor(EventExecutorGroup group) {
         if (group == null) {
             return null;
         }
         Boolean pinEventExecutor = channel.config().getOption(ChannelOption.SINGLE_EVENTEXECUTOR_PER_GROUP);
         if (pinEventExecutor != null && !pinEventExecutor) {
+            // Channel参数配置非同一个线程处理，不建议开启
             return group.next();
         }
         Map<EventExecutorGroup, EventExecutor> childExecutors = this.childExecutors;
         if (childExecutors == null) {
             // Use size of 4 as most people only use one extra EventExecutor.
+            // 大小使用4，因为大多数人只使用一个额外的EventExecutor。
             childExecutors = this.childExecutors = new IdentityHashMap<EventExecutorGroup, EventExecutor>(4);
         }
         // Pin one of the child executors once and remember it so that the same child executor
         // is used to fire events for the same channel.
+        // 将其中一个子执行器固定一次并记住它，以便同一个子执行器用于为相同的通道触发事件。
+        // 保证pipeline中的事件为同一个EventExecutor处理，可视为将EventExecutor绑定到pipeline
         EventExecutor childExecutor = childExecutors.get(group);
         if (childExecutor == null) {
             childExecutor = group.next();
@@ -237,6 +244,8 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             // If the registered is false it means that the channel was not registered on an eventLoop yet.
             // In this case we add the context to the pipeline and add a task that will call
             // ChannelHandler.handlerAdded(...) once the channel is registered.
+            // 如果注册为false，则意味着channel尚未在eventLoop上注册。
+            // 假若这样，我们将context添加到pipeline中，并添加一个任务，该任务将在注册通道后调用ChannelHandler.handlerAdded(…)。
             if (!registered) {
                 // 此时Channel还没注册的EventLoop中，而Netty的原则是事件在同一个EventLoop执行，
                 // 所以新增一个任务用于注册后添加
@@ -257,6 +266,10 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         return this;
     }
 
+    /**
+     * DefaultChannelPipeline的双向链表初始化持有头部和尾部节点，这两个节点对用户不可见，
+     * 也就是说，用户addLast只是将节点插入尾部节点之前，addFirst将节点插入头部节点之后。
+     */
     private void addLast0(AbstractChannelHandlerContext newCtx) {
         AbstractChannelHandlerContext prev = tail.prev;
         newCtx.prev = prev;
@@ -310,10 +323,14 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         ctx.prev = newCtx;
     }
 
+    /**
+     * 对Handler名称进行重复检查，generateName()生成形如：HandlerClassName#0、HandlerClassName#1的Handler字符串名称
+     */
     private String filterName(String name, ChannelHandler handler) {
         if (name == null) {
             return generateName(handler);
         }
+        // 检查名称是否已使用，也就是说pipeline中Handler的名称也要求满足唯一性。
         checkDuplicateName(name);
         return name;
     }
@@ -432,8 +449,9 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
         // It's not very likely for a user to put more than one handler of the same type, but make sure to avoid
         // any name conflicts.  Note that we don't cache the names generated here.
+        // 用户不太可能放置同一类型的多个处理程序，但是要确保避免任何名称冲突。注意，我们不缓存这里生成的名称。
         if (context0(name) != null) {
-            String baseName = name.substring(0, name.length() - 1); // Strip the trailing '0'.
+            String baseName = name.substring(0, name.length() - 1); // Strip the trailing '0'.去掉结尾的“0”。
             for (int i = 1;; i ++) {
                 String newName = baseName + i;
                 if (context0(newName) == null) {
@@ -652,6 +670,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         try {
             ctx.callHandlerAdded(); //调用用户方法（服务端启动时ChannelInitializer中initChannel）
         } catch (Throwable t) {
+            // 异常时删除Context，尽量恢复现场
             boolean removed = false;
             try {
                 atomicRemoveFromHandlerList(ctx);
@@ -691,6 +710,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             firstRegistration = false;
             // We are now registered to the EventLoop. It's time to call the callbacks for the ChannelHandlers,
             // that were added before the registration was done.
+            // 我们现在注册到EventLoop。现在是调用在完成注册之前添加的ChannelHandlers的回调的时候了。
             callHandlerAddedForAllHandlers();
         }
     }
@@ -1108,6 +1128,9 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         }
     }
 
+    /**
+     * 根据名称查找AbstractChannelHandlerContext
+     */
     private AbstractChannelHandlerContext context0(String name) {
         AbstractChannelHandlerContext context = head.next;
         while (context != tail) {
@@ -1169,9 +1192,15 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         }
     }
 
+    /**
+     * 当我们在Channel注册到eventLoop之前添加或删除Handler时，此时没有EventExecutor可执行HandlerAdd或HandlerRemove事件，
+     * 所以Netty为此事件生成一个相应任务等注册完成后在调用执行任务。
+     * 添加或删除任务可能有很多个，DefaultChannelPipeline使用一个链表存储，链表头部为先前的字段pendingHandlerCallbackHead
+     */
     private void callHandlerCallbackLater(AbstractChannelHandlerContext ctx, boolean added) {
         assert !registered;
 
+        // 参数added为True表示HandlerAdd任务，False表示HandlerRemove任务
         PendingHandlerCallback task = added ? new PendingHandlerAddedTask(ctx) : new PendingHandlerRemovedTask(ctx);
         PendingHandlerCallback pending = pendingHandlerCallbackHead;
         if (pending == null) {
@@ -1452,6 +1481,10 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             ctx.fireExceptionCaught(cause);
         }
 
+        /**
+         * Channel注册到EventLoop时执行,此时可以执行注册之前添加的ChannelHandlers的回调
+         * @param ctx
+         */
         @Override
         public void channelRegistered(ChannelHandlerContext ctx) {
             invokeHandlerAddedIfNeeded();
@@ -1536,9 +1569,11 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         void execute() {
             EventExecutor executor = ctx.executor();
             if (executor.inEventLoop()) {
+                // 当前线程为EventLoop线程，调用HandlerAdd事件
                 callHandlerAdded0(ctx);
             } else {
                 try {
+                    // 否则提交一个任务，任务执行run()方法
                     executor.execute(this);
                 } catch (RejectedExecutionException e) {
                     if (logger.isWarnEnabled()) {
@@ -1547,6 +1582,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
                                 executor, ctx.name(), e);
                     }
                     atomicRemoveFromHandlerList(ctx);
+                    // 异常时，将已添加的Handler删除
                     ctx.setRemoved();
                 }
             }
