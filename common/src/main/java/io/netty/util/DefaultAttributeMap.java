@@ -22,6 +22,8 @@ import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 /**
  * Default {@link AttributeMap} implementation which use simple synchronization per bucket to keep the memory overhead
  * as low as possible.
+ * <p>
+ * 默认的{@link AttributeMap}实现，每个桶使用简单的同步来尽可能地降低内存开销。
  */
 public class DefaultAttributeMap implements AttributeMap {
 
@@ -33,6 +35,8 @@ public class DefaultAttributeMap implements AttributeMap {
     private static final int MASK = BUCKET_SIZE  - 1;
 
     // Initialize lazily to reduce memory consumption; updated by AtomicReferenceFieldUpdater above.
+    // 延迟初始化以减少内存消耗;以上AtomicReferenceFieldUpdater更新；
+    // 使用链表法解决冲突
     @SuppressWarnings("UnusedDeclaration")
     private volatile AtomicReferenceArray<DefaultAttribute<?>> attributes;
 

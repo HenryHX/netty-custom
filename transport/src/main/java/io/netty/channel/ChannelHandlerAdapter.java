@@ -27,6 +27,7 @@ import java.util.Map;
 public abstract class ChannelHandlerAdapter implements ChannelHandler {
 
     // Not using volatile because it's used only for a sanity check.
+    // 不要使用volatile，因为它只用于完整性检查。
     boolean added;
 
     /**
@@ -80,6 +81,10 @@ public abstract class ChannelHandlerAdapter implements ChannelHandler {
     /**
      * Calls {@link ChannelHandlerContext#fireExceptionCaught(Throwable)} to forward
      * to the next {@link ChannelHandler} in the {@link ChannelPipeline}.
+     * <p></p>
+     * 调用{@link ChannelHandlerContext#fireExceptionCaught(Throwable)}来转发到{@link ChannelPipeline}中的下一个{@link ChannelHandler}。
+     *
+     * @Skip 表示该方法AbstractChannelHandlerContext不做处理，直接跳过
      *
      * Sub-classes may override this method to change behavior.
      *

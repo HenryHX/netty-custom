@@ -17,6 +17,7 @@ package io.netty.util;
 
 /**
  * Holds {@link Attribute}s which can be accessed via {@link AttributeKey}.
+ * <p>保存可以通过{@link AttributeKey}访问的{@link Attribute}。</p>
  *
  * Implementations must be Thread-safe.
  */

@@ -300,7 +300,7 @@ public final class InternalThreadLocalMap extends UnpaddedInternalThreadLocalMap
     public Map<Class<?>, Boolean> handlerSharableCache() {
         Map<Class<?>, Boolean> cache = handlerSharableCache;
         if (cache == null) {
-            // Start with small capacity to keep memory overhead as low as possible.
+            // Start with small capacity to keep memory overhead as low as possible.从小容量开始，尽可能降低内存开销。
             handlerSharableCache = cache = new WeakHashMap<Class<?>, Boolean>(4);
         }
         return cache;

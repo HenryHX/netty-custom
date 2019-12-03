@@ -29,6 +29,8 @@ import java.lang.annotation.Target;
  * Handles an I/O event or intercepts an I/O operation, and forwards it to its next handler in
  * its {@link ChannelPipeline}.
  *
+ * <p>处理I/O事件或拦截I/O操作，并将其转发给其{@link ChannelPipeline}中的下一个处理程序。</p>
+ *
  * <h3>Sub-types</h3>
  * <p>
  * {@link ChannelHandler} itself does not provide many methods, but you usually have to implement one of its subtypes:
@@ -61,6 +63,8 @@ import java.lang.annotation.Target;
  * <h3>State management</h3>
  *
  * A {@link ChannelHandler} often needs to store some stateful information.
+ * <p>{@link ChannelHandler}通常需要存储一些有状态信息。</p>
+ *
  * The simplest and recommended approach is to use member variables:
  * <pre>
  * public interface Message {

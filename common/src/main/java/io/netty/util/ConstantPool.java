@@ -35,6 +35,8 @@ public abstract class ConstantPool<T extends Constant<T>> {
 
     /**
      * Shortcut of {@link #valueOf(String) valueOf(firstNameComponent.getName() + "#" + secondNameComponent)}.
+     * <p></p>
+     * {@link #valueOf(String) valueOf(firstNameComponent.getName() + "#" + secondNameComponent)}的快捷方式。
      */
     public T valueOf(Class<?> firstNameComponent, String secondNameComponent) {
         if (firstNameComponent == null) {
@@ -69,7 +71,9 @@ public abstract class ConstantPool<T extends Constant<T>> {
         T constant = constants.get(name);
         if (constant == null) {
             final T tempConstant = newConstant(nextId(), name);
+            // constant 为与指定键关联的put前一个值，如果没有键的映射，则为{@code null}。
             constant = constants.putIfAbsent(name, tempConstant);
+            // constant != null 表示之前的有值，不修改之前返回之前的值
             if (constant == null) {
                 return tempConstant;
             }

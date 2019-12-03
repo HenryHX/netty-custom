@@ -42,14 +42,25 @@ import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 /**
  * The default {@link ChannelPipeline} implementation.  It is usually created
  * by a {@link Channel} implementation when the {@link Channel} is created.
+ * <p></p>
+ * channelpipeline提供了bind,connect,disconnect,close,deregister,flush,write,writeAndFlush等操作，
+ * 这些操作都是调用tail的对应同名方法(将event传到下一个outboundhandler)，最后到达head,head再使用unsafe来执行相应的操作。
  */
 public class DefaultChannelPipeline implements ChannelPipeline {
 
     static final InternalLogger logger = InternalLoggerFactory.getInstance(DefaultChannelPipeline.class);
 
+    // HeadContext#0
     private static final String HEAD_NAME = generateName0(HeadContext.class);
+    // TailContext#0
     private static final String TAIL_NAME = generateName0(TailContext.class);
 
+    /**
+     * 这是一个Netty内部定义的FastThreadLocal变量
+     * nameCaches是一个线程本地（局部）变量，也就是说每个线程都存有一份该变量，该变量是一个WeakHashMap，
+     * 其中存放的是ChannelHandler的Class与字符串名称的映射关系。简单说就是每个线程都有一份Handler的Class与字符串名称的映射关系，
+     * 之所以这样是为了避免使用复杂的CurrentHashMap也能实现并发安全。
+     */
     private static final FastThreadLocal<Map<Class<?>, String>> nameCaches =
             new FastThreadLocal<Map<Class<?>, String>>() {
         @Override
@@ -61,7 +72,9 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     private static final AtomicReferenceFieldUpdater<DefaultChannelPipeline, MessageSizeEstimator.Handle> ESTIMATOR =
             AtomicReferenceFieldUpdater.newUpdater(
                     DefaultChannelPipeline.class, MessageSizeEstimator.Handle.class, "estimatorHandle");
+    // 双向链表头
     final AbstractChannelHandlerContext head;
+    // 双向链表尾
     final AbstractChannelHandlerContext tail;
 
     private final Channel channel;
@@ -69,23 +82,32 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     private final VoidChannelPromise voidPromise;
     private final boolean touch = ResourceLeakDetector.isEnabled();
 
+    // 线程池中的线程映射，记住这个映射是为了保证执行任务时使用同一个线程
     private Map<EventExecutorGroup, EventExecutor> childExecutors;
+    // 消息字节大小估算器
     private volatile MessageSizeEstimator.Handle estimatorHandle;
+    // 对应Channel首次注册到EventLoop
     private boolean firstRegistration = true;
 
     /**
      * This is the head of a linked list that is processed by {@link #callHandlerAddedForAllHandlers()} and so process
      * all the pending {@link #callHandlerAdded0(AbstractChannelHandlerContext)}.
+     * <p></p>
+     * 这是一个由{@link #callHandlerAddedForAllHandlers()}处理的链表的头部，
+     * 因此处理所有挂起的{@link #callHandlerAdded0(AbstractChannelHandlerContext)}。
      *
      * We only keep the head because it is expected that the list is used infrequently and its size is small.
      * Thus full iterations to do insertions is assumed to be a good compromised to saving memory and tail management
      * complexity.
+     * <p></p>
+     * 我们只保留头，因为列表很少使用，而且它的大小很小。因此，执行插入的完整迭代被认为是节省内存和尾部管理复杂性的一个很好的折衷方案。
      */
     private PendingHandlerCallback pendingHandlerCallbackHead;
 
     /**
      * Set to {@code true} once the {@link AbstractChannel} is registered.Once set to {@code true} the value will never
      * change.
+     * 注册到EventLoop标记，该值一旦设置为true后不再改变
      */
     private boolean registered;
 
@@ -112,7 +134,11 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         return handle;
     }
 
+    /**
+     * 记录消息引用对象，用于内存泄漏时，调试
+     */
     final Object touch(Object msg, AbstractChannelHandlerContext next) {
+        // 如果内存泄漏探测开启，则记录消息引用对象，否则直至返回消息对象
         return touch ? ReferenceCountUtil.touch(msg, next) : msg;
     }
 
@@ -199,16 +225,21 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     public final ChannelPipeline addLast(EventExecutorGroup group, String name, ChannelHandler handler) {
         final AbstractChannelHandlerContext newCtx;
         synchronized (this) {
+            // 检查Handler是否重复添加
             checkMultiplicity(handler);
 
+            // 新建一个Context
             newCtx = newContext(group, filterName(name, handler), handler);
 
+            // 实际的双向链表插入操作
             addLast0(newCtx);
 
             // If the registered is false it means that the channel was not registered on an eventLoop yet.
             // In this case we add the context to the pipeline and add a task that will call
             // ChannelHandler.handlerAdded(...) once the channel is registered.
             if (!registered) {
+                // 此时Channel还没注册的EventLoop中，而Netty的原则是事件在同一个EventLoop执行，
+                // 所以新增一个任务用于注册后添加
                 newCtx.setAddPending();
                 callHandlerCallbackLater(newCtx, true);
                 return this;
@@ -216,10 +247,12 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
             EventExecutor executor = newCtx.executor();
             if (!executor.inEventLoop()) {
+                // 当前线程不是EventLoop线程
                 callHandlerAddedInEventLoop(newCtx, executor);
                 return this;
             }
         }
+        // 当前线程为EventLoop线程且已注册则直接触发HandlerAdd事件
         callHandlerAdded0(newCtx);
         return this;
     }
@@ -412,6 +445,9 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         return name;
     }
 
+    /**
+     * 获取最简单的类名，不包括包名
+     */
     private static String generateName0(Class<?> handlerType) {
         return StringUtil.simpleClassName(handlerType) + "#0";
     }
@@ -596,10 +632,14 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         oldCtx.next = newCtx;
     }
 
+    /**
+     * 保证ChannelPipeline中至多只有一个同一类型的非共享Handler
+     */
     private static void checkMultiplicity(ChannelHandler handler) {
         if (handler instanceof ChannelHandlerAdapter) {
             ChannelHandlerAdapter h = (ChannelHandlerAdapter) handler;
             if (!h.isSharable() && h.added) { //非共享（@Sharable注解）并且已经添加过，则抛出重复添加的异常
+                // 非共享且已被添加到pipeline中
                 throw new ChannelPipelineException(
                         h.getClass().getName() +
                         " is not a @Sharable handler, so can't be added or removed multiple times.");
@@ -1173,6 +1213,8 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     /**
      * Called once the {@link ChannelInboundHandler#channelActive(ChannelHandlerContext)}event hit
      * the end of the {@link ChannelPipeline}.
+     * <p></p>
+     * 当{@link ChannelInboundHandler#channelActive(ChannelHandlerContext)}事件到达{@link ChannelPipeline}末尾时调用。
      */
     protected void onUnhandledInboundChannelActive() {
     }
@@ -1180,6 +1222,8 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     /**
      * Called once the {@link ChannelInboundHandler#channelInactive(ChannelHandlerContext)} event hit
      * the end of the {@link ChannelPipeline}.
+     * <p></p>
+     * 当{@link ChannelInboundHandler#channelInactive(ChannelHandlerContext)}事件到达{@link ChannelPipeline}末尾时调用。
      */
     protected void onUnhandledInboundChannelInactive() {
     }
@@ -1223,6 +1267,9 @@ public class DefaultChannelPipeline implements ChannelPipeline {
      * Called once an user event hit the end of the {@link ChannelPipeline} without been handled by the user
      * in {@link ChannelInboundHandler#userEventTriggered(ChannelHandlerContext, Object)}. This method is responsible
      * to call {@link ReferenceCountUtil#release(Object)} on the given event at some point.
+     * <p></p>
+     * 当用户事件到达 {@link ChannelPipeline}的最后都没有被{@link ChannelInboundHandler#userEventTriggered(ChannelHandlerContext, Object)}处理调用时执行。
+     * 这个方法负责在某个时候对给定的事件调用{@link ReferenceCountUtil#release(Object)}。
      */
     protected void onUnhandledInboundUserEventTriggered(Object evt) {
         // This may not be a configuration error and so don't log anything.
@@ -1254,6 +1301,10 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     }
 
     // A special catch-all handler that handles both bytes and messages.
+    // 一个特殊的全捕获处理程序，它同时处理字节和消息。
+    /**
+     * tail这个ChannelHandlerContext实现了ChannelInboundHandler接口，作为最后一个inboundHandler, 基本上是吞掉所有消息，一些接口会做消息的释放。
+     */
     final class TailContext extends AbstractChannelHandlerContext implements ChannelInboundHandler {
 
         TailContext(DefaultChannelPipeline pipeline) {
@@ -1314,6 +1365,14 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         }
     }
 
+    /**
+     * 所有出站的操作最后都是通过head来实现具体io操作。
+     * head同时实现了inbount与outbound两个接口，所以所有入站操作第一个是到达head,所有出站操作最后一个到达head
+     * <p>
+     * 对于入站操作，head也提供了实现，在往后传event的基础上，不同的event会有一些额外的操作。
+     * <p>
+     * 对于出站操作，最后由channel的unsafe内部类执行具体的IO操作(unsafe会使用java nio的api完成操作)。
+     */
     final class HeadContext extends AbstractChannelHandlerContext
             implements ChannelOutboundHandler, ChannelInboundHandler {
 
@@ -1340,6 +1399,10 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             // NOOP
         }
 
+        /**
+         * 最后由channel的unsafe内部类执行具体的IO操作(unsafe会使用java nio的api完成操作)。
+         * 其他的IO操作还有connect,disconnect,close,deregister,read,write,flush。
+         */
         @Override
         public void bind(
                 ChannelHandlerContext ctx, SocketAddress localAddress, ChannelPromise promise) {
@@ -1400,6 +1463,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             ctx.fireChannelUnregistered();
 
             // Remove all handlers sequentially if channel is closed and unregistered.
+            // 如果通道关闭并未注册，则按顺序删除所有处理程序。
             if (!channel.isOpen()) {
                 destroy();
             }

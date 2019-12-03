@@ -280,6 +280,8 @@ public final class StringUtil {
     /**
      * Generates a simplified name from a {@link Class}.  Similar to {@link Class#getSimpleName()}, but it works fine
      * with anonymous classes.
+     * <p></p>
+     * 从{@link Class}生成一个简化名称。类似于{@link Class#getSimpleName()}，但是它可以很好地处理匿名类。
      */
     public static String simpleClassName(Class<?> clazz) {
         String className = checkNotNull(clazz, "clazz").getName();

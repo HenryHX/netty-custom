@@ -23,6 +23,8 @@ import io.netty.buffer.ByteBufHolder;
 /**
  * Default {@link MessageSizeEstimator} implementation which supports the estimation of the size of
  * {@link ByteBuf}, {@link ByteBufHolder} and {@link FileRegion}.
+ * <p>默认的{@link MessageSizeEstimator}实现，支持
+ * {@link ByteBuf}、{@link ByteBufHolder}和{@link FileRegion}的大小估计。</p>
  */
 public final class DefaultMessageSizeEstimator implements MessageSizeEstimator {
 
@@ -50,6 +52,7 @@ public final class DefaultMessageSizeEstimator implements MessageSizeEstimator {
 
     /**
      * Return the default implementation which returns {@code 8} for unknown messages.
+     * 返回默认实现，该实现为未知消息返回{@code 8}bytes。
      */
     public static final MessageSizeEstimator DEFAULT = new DefaultMessageSizeEstimator(8);
 

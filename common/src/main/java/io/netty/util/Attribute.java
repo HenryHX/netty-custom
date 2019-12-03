@@ -70,14 +70,18 @@ public interface Attribute<T> {
     /**
      * Atomically sets the value to the given updated value if the current value == the expected value.
      * If it the set was successful it returns {@code true} otherwise {@code false}.
+     * <p></p>
+     * 如果当前值==期望值，则自动将该值设置为给定的更新值。如果设置成功，则返回{@code true}，否则返回{@code false}。
      */
     boolean compareAndSet(T oldValue, T newValue);
 
     /**
      * Removes this attribute from the {@link AttributeMap}. Subsequent {@link #get()} calls will return @{code null}.
+     * <p>从{@link AttributeMap}中删除此属性。后续的{@link #get()}调用将返回@{code null}。</p>
      *
      * If you only want to remove the value and clear the {@link Attribute} while still keep it in
      * {@link AttributeMap} use {@link #set(Object)} with a value of {@code null}.
+     * <p>如果您只想删除该值并清除{@link Attribute}，同时仍然将其保留在{@link AttributeMap}中，那么可以使用{@link #set(Object)}，其值为{@code null}。</p>
      *
      * <p>
      * Be aware that even if you call this method another thread that has obtained a reference to this {@link Attribute}
