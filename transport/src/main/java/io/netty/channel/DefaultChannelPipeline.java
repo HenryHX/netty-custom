@@ -82,7 +82,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     private final VoidChannelPromise voidPromise;
     private final boolean touch = ResourceLeakDetector.isEnabled();
 
-    // 线程池中的线程映射，记住这个映射是为了保证执行任务时使用同一个线程
+    // 线程池中的线程映射，记住这个映射是为了保证执行handler任务时使用同一个线程
     private Map<EventExecutorGroup, EventExecutor> childExecutors;
     // 消息字节大小估算器
     private volatile MessageSizeEstimator.Handle estimatorHandle;
@@ -438,6 +438,12 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         return this;
     }
 
+    /**
+     * 生成handler的名字
+     * 一般是handlerClassType#0，如果已经存在，则更新为handlerClassType#1(或者2/3/4/5)
+     * @param handler
+     * @return
+     */
     private String generateName(ChannelHandler handler) {
         Map<Class<?>, String> cache = nameCaches.get();
         Class<?> handlerType = handler.getClass();
@@ -704,6 +710,13 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         }
     }
 
+    /**
+     * invokeHandlerAddedIfNeeded()方法在以下两种情况被调用：
+     * <p>
+     * (1).AbstractUnsafe的register事件框架，当Channel注册到EventLoop之前会被调用，确保异步注册操作一旦完成就触发HandlerAdd事件；
+     * <p>
+     * (2).双向链表头部节点的channelRegistered()方法。 双重保护
+     */
     final void invokeHandlerAddedIfNeeded() {
         assert channel.eventLoop().inEventLoop();
         if (firstRegistration) {
@@ -813,6 +826,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             if (ctx == null) {
                 return null;
             }
+            // 是否类型相同或是父类
             if (handlerType.isAssignableFrom(ctx.handler().getClass())) {
                 return ctx;
             }
@@ -882,6 +896,11 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         return buf.toString();
     }
 
+    /**
+     * 入站事件从双向链表头部处理，head不做处理，从head下一个符合要求的context进行处理
+     * 调用fireChannelRegistered的线程一定是当前channel绑定的EventLoop
+     * @return
+     */
     @Override
     public final ChannelPipeline fireChannelRegistered() {
         AbstractChannelHandlerContext.invokeChannelRegistered(head);
@@ -897,17 +916,36 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     /**
      * Removes all handlers from the pipeline one by one from tail (exclusive) to head (exclusive) to trigger
      * handlerRemoved().
+     * 从尾部(独占)到头部(独占)逐个删除管道中的所有处理程序，以触发HandlerRemove()。
      *
      * Note that we traverse up the pipeline ({@link #destroyUp(AbstractChannelHandlerContext, boolean)})
      * before traversing down ({@link #destroyDown(Thread, AbstractChannelHandlerContext, boolean)}) so that
      * the handlers are removed after all events are handled.
+     * <p></p>
+     * 注意，我们先遍历管道({@link #destroyUp(AbstractChannelHandlerContext, boolean)})，
+     * 然后遍历管道({@link #destroyDown(Thread, AbstractChannelHandlerContext, boolean)})，以便在处理所有事件之后删除处理程序。
      *
      * See: https://github.com/netty/netty/issues/3156
+     *
+     * <p></p>
+     * 这部分代码晦涩难懂，考虑这样一种情况，当我们由尾部向头部删除节点时，有一个入站事件正从头部向尾部传播，
+     * 由于从尾部开始删除了某些节点，入站事件的处理流程被破坏。这部分代码正是为了处理这种情况，
+     * 所以首先从头部向尾部遍历，确保没有入站事件，此时才从尾部向头部进行删除销毁操作。
+     * <p></p>
+     * 这部分代码还为了保证事件在正确的线程中执行，假设有如下pipeline：
+     * <p>
+     * HEAD --> [E1] H1 --> [E2] H2 --> TAIL
+     * <p>
+     * 其中E1和E2为两个线程，则必须保证Handler1中的事件在E1执行，Handler2中的事件在E2执行，而Head和Tail的事件在Channel注册到的EventLoop中执行。
      */
     private synchronized void destroy() {
         destroyUp(head.next, false);
     }
 
+    /**
+     * 参数inEventLoop应理解为是否直接执行本段代码的for循环部分，也就是说为true时不需要提交
+     * 一个destroyUp任务，为False时则需要判断Handler的执行线程是否为EventLoop线程
+     */
     private void destroyUp(AbstractChannelHandlerContext ctx, boolean inEventLoop) {
         final Thread currentThread = Thread.currentThread();
         final AbstractChannelHandlerContext tail = this.tail;
@@ -930,18 +968,22 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             }
 
             ctx = ctx.next;
+            // 每次都悲观的认为下一个Handler的处理线程会是另外一个线程
             inEventLoop = false;
         }
     }
 
     private void destroyDown(Thread currentThread, AbstractChannelHandlerContext ctx, boolean inEventLoop) {
         // We have reached at tail; now traverse backwards.
+        // 至此，已经到达双向链表尾部，可确定入站事件已在删除操作进行之前传播完毕
         final AbstractChannelHandlerContext head = this.head;
         for (;;) {
             if (ctx == head) {
                 break;
             }
 
+            // 这部分代码实质与up部分一致，采用两种表现形式容易引起困惑
+            // 本质上 （！a  && ！b） == （a || b）
             final EventExecutor executor = ctx.executor();
             if (inEventLoop || executor.inEventLoop(currentThread)) {
                 atomicRemoveFromHandlerList(ctx);
@@ -1004,6 +1046,11 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         return this;
     }
 
+    /**
+     * 出站事件从双向链表尾部处理, tail不做处理
+     * @param localAddress
+     * @return
+     */
     @Override
     public final ChannelFuture bind(SocketAddress localAddress) {
         return tail.bind(localAddress);
@@ -1129,7 +1176,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     }
 
     /**
-     * 根据名称查找AbstractChannelHandlerContext
+     * 根据名称查找AbstractChannelHandlerContext，如果不存在则返回null
      */
     private AbstractChannelHandlerContext context0(String name) {
         AbstractChannelHandlerContext context = head.next;
@@ -1172,9 +1219,10 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     private void callHandlerAddedForAllHandlers() {
         final PendingHandlerCallback pendingHandlerCallbackHead;
         synchronized (this) {
+            // 必须为非注册
             assert !registered;
 
-            // This Channel itself was registered.
+            // This Channel itself was registered. 至此则说明已注册
             registered = true;
 
             pendingHandlerCallbackHead = this.pendingHandlerCallbackHead;
@@ -1185,6 +1233,8 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         // This must happen outside of the synchronized(...) block as otherwise handlerAdded(...) may be called while
         // holding the lock and so produce a deadlock if handlerAdded(...) will try to add another handler from outside
         // the EventLoop.
+        // 用一个局部变量保存任务链表头部是因为以下代码如果在synchronized块内，则当用户在
+        // 非EventLoop中执行HandlerAdd()方法而该方法中又新增一个handler时不会发生死锁
         PendingHandlerCallback task = pendingHandlerCallbackHead;
         while (task != null) {
             task.execute();
