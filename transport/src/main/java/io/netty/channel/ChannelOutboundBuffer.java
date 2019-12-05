@@ -42,6 +42,9 @@ import static java.lang.Math.min;
  * (Transport implementors only) an internal data structure used by {@link AbstractChannel} to store its pending
  * outbound write requests.
  * <p>
+ * 每个 ChannelSocket 的 Unsafe 都有一个绑定的 ChannelOutboundBuffer ， Netty 向站外输出数据的过程统一通过 ChannelOutboundBuffer 类进行封装，
+ * 目的是为了提高网络的吞吐量，在外面调用 write 的时候，数据并没有写到 Socket，而是写到了 ChannelOutboundBuffer 这里，当调用 flush 的时候，才真正的向 Socket 写出。
+ * <p>
  * All methods must be called by a transport implementation from an I/O thread, except the following ones:
  * <ul>
  * <li>{@link #size()} and {@link #isEmpty()}</li>
@@ -75,12 +78,16 @@ public final class ChannelOutboundBuffer {
     // Entry(flushedEntry) --> ... Entry(unflushedEntry) --> ... Entry(tailEntry)
     //
     // The Entry that is the first in the linked-list structure that was flushed
+    // 缓存链表中被刷新的第一个元素
     private Entry flushedEntry;
     // The Entry which is the first unflushed in the linked-list structure
+    // 缓存链表中中第一个未刷新的元素
     private Entry unflushedEntry;
     // The Entry which represents the tail of the buffer
+    // 缓存链表中的尾元素
     private Entry tailEntry;
     // The number of flushed entries that are not written yet
+    // 刷新但还没有写入到 socket 中的数量
     private int flushed;
 
     private int nioBufferCount;
@@ -112,25 +119,36 @@ public final class ChannelOutboundBuffer {
      */
     public void addMessage(Object msg, int size, ChannelPromise promise) {
         Entry entry = Entry.newInstance(msg, size, total(msg), promise);
+        // 判断 tailEntry 是否为 null，如果为 null 说明链表为空。则把 flushedEntry 置为null。
         if (tailEntry == null) {
             flushedEntry = null;
         } else {
+            // 如果 tailEntry 不为空，则把新添加的 Entry 添加到 tailEntry 后面 。
             Entry tail = tailEntry;
             tail.next = entry;
         }
+        // 将新添加的 Entry 设置为 链表的 tailEntry。
         tailEntry = entry;
+        // 如果 unflushedEntry 为null，说明没有未被刷新的元素。新添加的Entry 肯定是未被刷新的，则把当前 Entry 设置为 unflushedEntry 。
         if (unflushedEntry == null) {
             unflushedEntry = entry;
         }
 
         // increment pending bytes after adding message to the unflushed arrays.
         // See https://github.com/netty/netty/issues/1619
+        // 统计未被刷新的元素的总大小。
         incrementPendingOutboundBytes(entry.pendingSize, false);
     }
 
     /**
      * Add a flush to this {@link ChannelOutboundBuffer}. This means all previous added messages are marked as flushed
      * and so you will be able to handle them.
+     * <p>
+     * 当 addMessage 成功添加进 ChannelOutboundBuffer 后，就需要 flush 刷新到 Socket 中去。
+     * 但是这个方法并不是做刷新到 Socket 的操作。而是将 unflushedEntry 的引用转移到 flushedEntry 引用中，表示即将刷新这个 flushedEntry，
+     * 至于为什么这么做？
+     * <p>
+     * 答：因为 Netty 提供了 promise，这个对象可以做取消操作，例如，不发送这个 ByteBuf 了，所以，在 write 之后，flush 之前需要告诉 promise 不能做取消操作了。
      */
     public void addFlush() {
         // There is no need to process all entries if there was already a flush before and no new messages
@@ -139,10 +157,12 @@ public final class ChannelOutboundBuffer {
         // See https://github.com/netty/netty/issues/2577
         Entry entry = unflushedEntry;
         if (entry != null) {
+            // 如果 flushedEntry == null 说明当前没有正在刷新的任务，则把 entry 设置为 flushedEntry 刷新的起点。
             if (flushedEntry == null) {
                 // there is no flushedEntry yet, so start with the entry
                 flushedEntry = entry;
             }
+            // 循环设置 entry， 设置这些 entry 状态设置为非取消状态，如果设置失败，则把这些entry 节点取消并使 totalPendingSize 减去这个节点的字节大小。
             do {
                 flushed ++;
                 if (!entry.promise.setUncancellable()) {
@@ -253,6 +273,7 @@ public final class ChannelOutboundBuffer {
      * messages are ready to be handled.
      */
     public boolean remove() {
+        // 获取 flushedEntry 节点，链表的头结点。如果获取不到清空 ByteBuf 缓存
         Entry e = flushedEntry;
         if (e == null) {
             clearNioBuffers();
@@ -263,16 +284,19 @@ public final class ChannelOutboundBuffer {
         ChannelPromise promise = e.promise;
         int size = e.pendingSize;
 
+        // 在链表上移除该 Entry。如果之前没有取消，只释放消息、通知和递减。
         removeEntry(e);
 
         if (!e.cancelled) {
             // only release message, notify and decrement if it was not canceled before.
+            // 如果之前没有取消，则只释放消息、通知和减量。
             ReferenceCountUtil.safeRelease(msg);
             safeSuccess(promise);
             decrementPendingOutboundBytes(size, false, true);
         }
 
         // recycle the entry
+        // 当 Entry 从链表中移除的时候回调用 e.recycle() 方法。把 Entry 中成员变量全部初始化
         e.recycle();
 
         return true;
@@ -314,7 +338,13 @@ public final class ChannelOutboundBuffer {
         return true;
     }
 
+    /**
+     * 链表移除节点
+     */
     private void removeEntry(Entry e) {
+        // 如果 flushed ==0 说明，链表中所有 flush 的数据都已经发送到 Socket 中。
+        // 把 flushedEntry 置位 null。此时链表可能还有 unflushedEntry 数据。
+        // 如果此时 e == tailEntry 说明链表为空，则把 tailEntry 和 unflushedEntry 都置为空。
         if (-- flushed == 0) {
             // processed everything
             flushedEntry = null;
@@ -323,6 +353,7 @@ public final class ChannelOutboundBuffer {
                 unflushedEntry = null;
             }
         } else {
+            // 把 flushedEntry 置为下一个节点（flushedEntry 此时是头结点）。
             flushedEntry = e.next;
         }
     }
@@ -799,6 +830,9 @@ public final class ChannelOutboundBuffer {
     }
 
     static final class Entry {
+        /**
+         * 由于 Entry 使用比较频繁，会频繁的创建和销毁，这里使用了 Entry 的对象池，创建的时候从缓存中获取，销毁时回收。
+         */
         private static final ObjectPool<Entry> RECYCLER = ObjectPool.newPool(new ObjectCreator<Entry>() {
             @Override
             public Entry newObject(Handle<Entry> handle) {
@@ -823,6 +857,9 @@ public final class ChannelOutboundBuffer {
         }
 
         static Entry newInstance(Object msg, int size, long total, ChannelPromise promise) {
+            // 从 Recycler 中获取 Entry 对象，如果获取不到则使用 Recycler.newObject() 方法创建一个 Entry 对象，
+            // 调用 newObject() 方法在 Recycler.get() 方法中
+            // 从 Recycler 中可以看出，Entry 对象是存储在 Stack 中。如果 Stack 中没有可用的 Stack，则调用 newObject() 方法创建。
             Entry entry = RECYCLER.get();
             entry.msg = msg;
             entry.pendingSize = size + CHANNEL_OUTBOUND_BUFFER_ENTRY_OVERHEAD;
@@ -850,6 +887,10 @@ public final class ChannelOutboundBuffer {
             return 0;
         }
 
+        /**
+         * 把 Entry 中成员变量全部初始化。然后在调用 handle.recycle() 方法
+         * Recycler.recycle() 方法又把 Entry 对象压进 stack 中。
+         */
         void recycle() {
             next = null;
             bufs = null;
