@@ -146,6 +146,9 @@ public abstract class AbstractByteBuf extends ByteBuf {
         return this;
     }
 
+    /**
+     * clear操作只是把readerIndex和writerIndex设置为0，不会对存储的数据进行修改
+     */
     @Override
     public ByteBuf clear() {
         readerIndex = writerIndex = 0;
@@ -211,16 +214,25 @@ public abstract class AbstractByteBuf extends ByteBuf {
         return this;
     }
 
+    /**
+     * 重用缓存区，重用已经读取过的缓存区
+     */
     @Override
     public ByteBuf discardReadBytes() {
+        // 判断ref引用计数，如果为0表示已经释放release
         ensureAccessible();
+        // 如果为0则说明没有可重用的缓存区，直接返回
         if (readerIndex == 0) {
             return this;
         }
 
+        // 如果读索引大于0且读索引不等于写索引，说明缓冲区中既有已经读取过的被丢弃的缓冲区，也有尚未读取的可读取缓存区。
         if (readerIndex != writerIndex) {
+            // 进行字节数组复制, 将尚未读取的字节数组复制到缓冲区的起始位置，
+            // 然后重新设置读写索引，读索引为0，写索引设置为之前的写索引减去读索引。
             setBytes(0, this, readerIndex, writerIndex - readerIndex);
             writerIndex -= readerIndex;
+            // 在设置读写索引的同时，调整markedReaderIndex和markedWriterIndex。
             adjustMarkers(readerIndex);
             readerIndex = 0;
         } else {
@@ -269,7 +281,11 @@ public abstract class AbstractByteBuf extends ByteBuf {
     }
 
     // Called after a capacity reduction
+    /**
+     * 如果新的容量小于当前缓冲区容量的话，不需要进行动态扩展，但是需要截取部分数据作为子缓冲区。
+     */
     protected final void trimIndicesToCapacity(int newCapacity) {
+        // 如果写索引比newCapacity大，设置新的写索引为newCapacity,读索引为readerIndex和newCapacity之间较小者
         if (writerIndex() > newCapacity) {
             setIndex0(Math.min(readerIndex(), newCapacity), newCapacity);
         }
@@ -298,10 +314,14 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
         // Normalize the current capacity to the power of 2.
         int minNewCapacity = writerIndex + minWritableBytes;
+        /**
+         * 计算新的缓存区容量，参考{@link AbstractByteBufAllocator#calculateNewCapacity(int, int)}
+         */
         int newCapacity = alloc().calculateNewCapacity(minNewCapacity, maxCapacity);
 
         int fastCapacity = writerIndex + maxFastWritableBytes();
         // Grow by a smaller amount if it will avoid reallocation
+        // 如果可以避免重新分配的话，可以少增长一点
         if (newCapacity > fastCapacity && minNewCapacity <= fastCapacity) {
             newCapacity = fastCapacity;
         }
@@ -907,8 +927,13 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
     @Override
     public ByteBuf readBytes(byte[] dst, int dstIndex, int length) {
+        // 在进行读操作之前，首先对缓冲区可用的空间进行校验。如果要读取的字节长度小于0，就会抛出IllegalArgumentException异常，
+        // 如果要读取的字节长度大于已写入的字节长度，会抛出IndexOutOfBoundsException异常。
         checkReadableBytes(length);
+        // 通过校验之后，调用getBytes方法，从当前的readerIndex开始，读取length长度的字节数据到目标dst中，
+        // 由于不同的子类实现不一样，getBytes是个抽象方法，由对应的子类去实现。
         getBytes(readerIndex, dst, dstIndex, length);
+        // 如果读取数据成功，readerIndex将会增加相应的length。
         readerIndex += length;
         return this;
     }

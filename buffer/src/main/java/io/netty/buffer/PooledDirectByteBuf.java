@@ -35,6 +35,9 @@ final class PooledDirectByteBuf extends PooledByteBuf<ByteBuffer> {
         }
     });
 
+    /**
+     * 由于内存池实现，每次创建字节缓冲区的时候，不是直接new，而是从内存池中去获取，然后设置引用计数器跟读写Index，跟缓冲区最大容量返回。
+     */
     static PooledDirectByteBuf newInstance(int maxCapacity) {
         PooledDirectByteBuf buf = RECYCLER.get();
         buf.reuse(maxCapacity);
@@ -279,8 +282,18 @@ final class PooledDirectByteBuf extends PooledByteBuf<ByteBuffer> {
         return readBytes;
     }
 
+    /**
+     * copy方法可以复制一个字节缓冲区实例，与原缓冲区独立。
+     */
     @Override
     public ByteBuf copy(int index, int length) {
+        /**
+         * 首先要对index和length进行合法性判断，
+         * 然后调用PooledByteBufAllocator的directBuffer方法分配一个新的缓冲区。
+         * {@link io.netty.buffer.AbstractByteBufAllocator.directBuffer(int, int)}
+         * newDirectBuffer方法是一个抽象方法，对于不同的子类有不同的实现。
+         * {@link io.netty.buffer.PooledByteBufAllocator.newDirectBuffer}
+         */
         checkIndex(index, length);
         ByteBuf copy = alloc().directBuffer(length, maxCapacity());
         return copy.writeBytes(this, index, length);

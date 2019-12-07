@@ -247,6 +247,16 @@ public abstract class AbstractByteBufAllocator implements ByteBufAllocator {
         return StringUtil.simpleClassName(this) + "(directByDefault: " + directByDefault + ')';
     }
 
+    /**
+     * 首先设置门限值为4MB,当需要的新容量正好等于门限值时，使用门限值作为新的缓存区容量，
+     * 如果新申请的内存容量大于门限值，不能采用倍增的方式扩张内容（防止内存膨胀和浪费）
+     * <p></p>
+     * 通过先倍增再步长来扩展容量，如果我们只是writerIndex+length的值作为缓冲区的新容量，
+     * 那么再以后进行写操作的时候，每次都需要进行容量扩展，容量扩展的过程需要进行内存复制，
+     * 过多内存复制会导致系统的性能下降，之所以是倍增再部长，在最初空间比较小的时候，
+     * 倍增操作并不会带来太多的内存浪费，但是内存增长到一定的时候，再进行倍增的时候，就会对内存造成浪费，
+     * 因此，需要设定一个阀值，到达阀值之后就通过步长的方法进行平滑的增长。
+     */
     @Override
     public int calculateNewCapacity(int minNewCapacity, int maxCapacity) {
         checkPositiveOrZero(minNewCapacity, "minNewCapacity");
@@ -263,7 +273,9 @@ public abstract class AbstractByteBufAllocator implements ByteBufAllocator {
 
         // If over threshold, do not double but just increase by threshold.
         if (minNewCapacity > threshold) {
+            // 采用每次进步4MB的方式来内存扩张，扩张的时候需要对扩张后的内存和最大内存进行对比，
             int newCapacity = minNewCapacity / threshold * threshold;
+            // 如果大于缓存区的最大长度，则使用maxCapacity作为扩容后的缓存区容量。
             if (newCapacity > maxCapacity - threshold) {
                 newCapacity = maxCapacity;
             } else {
@@ -273,6 +285,7 @@ public abstract class AbstractByteBufAllocator implements ByteBufAllocator {
         }
 
         // Not over threshold. Double up to 4 MiB, starting from 64.
+        // 如果扩容后的新容量小于门限值，则以64为基数进行倍增，直到倍增后的结果大于等于需要的值。
         int newCapacity = 64;
         while (newCapacity < minNewCapacity) {
             newCapacity <<= 1;

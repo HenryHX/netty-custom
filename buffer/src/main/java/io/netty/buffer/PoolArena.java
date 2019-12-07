@@ -29,6 +29,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static io.netty.util.internal.ObjectUtil.checkPositiveOrZero;
 import static java.lang.Math.max;
 
+/**
+ * 在内存分配中，为了能够集中管理内存的分配及释放，同时提供分配和释放内存的性能，一般都是会先预先分配一大块连续的内存，
+ * 不需要重复频繁地进行内存操作，那一大块连续的内存就叫做memory Arena，而PoolArena是Netty的内存池实现类。
+ * <p></p>
+ * PoolArena是由多个Chunk组成的，而每个Chunk则由多个Page组成。PoolArena是由Chunk和Page共同组织和管理的。
+ */
 abstract class PoolArena<T> implements PoolArenaMetric {
     static final boolean HAS_UNSAFE = PlatformDependent.hasUnsafe();
 

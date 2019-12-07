@@ -50,9 +50,14 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     private static final InternalLogger logger =
             InternalLoggerFactory.getInstance(AbstractNioChannel.class);
 
+    // 抽象了 SocketChannel 和 ServerSocketChannel 的公共的父类
+    // SelectableChannel 抽象了 java.nio.SocketChannel 和 java.nio.ServerSocketChannel 的公共方法。
     private final SelectableChannel ch;
+    // SelectionKey.OP_READ 读事件
     protected final int readInterestOp;
+    // 注册到 selector 上返回的 selectorKey
     volatile SelectionKey selectionKey;
+    // 是否还有未读的数据
     boolean readPending;
     private final Runnable clearReadPendingRunnable = new Runnable() {
         @Override
@@ -64,9 +69,12 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     /**
      * The future of the current connection attempt.  If not null, subsequent
      * connection attempts will fail.
+     * 连接操作的结果
      */
     private ChannelPromise connectPromise;
+    // 连接超时定时任务
     private ScheduledFuture<?> connectTimeoutFuture;
+    // 客户端地址
     private SocketAddress requestedRemoteAddress;
 
     /**

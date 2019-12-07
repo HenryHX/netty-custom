@@ -16,6 +16,13 @@
 
 package io.netty.buffer;
 
+/**
+ * 当对于小于一个Page的内存分配的时候，每个Page会被划分为大小相等的内存块，它的大小是根据第一次申请内存分配的内存块大小来决定的。
+ *
+ * 一个Page只能分配与第一次内存内存的内存块的大小相等的内存块，如果想要想要申请大小不想等的内存块，只能在新的Page上申请内存分配了。
+ *
+ * Page中的存储区域的使用情况是通过一个long数组bitmap来维护的,每一位表示一个区域的占用情况。
+ */
 final class PoolSubpage<T> implements PoolSubpageMetric {
 
     final PoolChunk<T> chunk;

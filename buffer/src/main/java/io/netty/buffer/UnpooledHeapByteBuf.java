@@ -34,11 +34,18 @@ import static io.netty.util.internal.ObjectUtil.checkNotNull;
  * Big endian Java heap buffer implementation. It is recommended to use
  * {@link UnpooledByteBufAllocator#heapBuffer(int, int)}, {@link Unpooled#buffer(int)} and
  * {@link Unpooled#wrappedBuffer(byte[])} instead of calling the constructor explicitly.
+ * <p></p>
+ *  UnpooledHeapByteBuf是AbstractReferenceCountedByteBuf的子类，UnpooledHeapByteBuf是基于堆内存进行内存分配的字节码缓存区，
+ * 它没有基于对象池技术实现，这就意味着每次I/O的读写都会创建一个新的UnpooledHeapByteBuf，
+ * 频繁进行大块内存的分配和回收对性能造成一定的影响，但是相比堆外内存的申请和释放，它的成本还是会低一些
  */
 public class UnpooledHeapByteBuf extends AbstractReferenceCountedByteBuf {
 
+    // 聚合了一个ByteBufAllocator,用于UnpooledHeapByteBuf的内存分配
     private final ByteBufAllocator alloc;
+    // 定义了一个byte数组作为缓冲区
     byte[] array;
+    // 定义一个ByteBuffer类型的tmpNioBuf变量, 用于实现Netty ByteBuf到JDK NIO ByteBuffer的转正。
     private ByteBuffer tmpNioBuf;
 
     /**
@@ -122,15 +129,20 @@ public class UnpooledHeapByteBuf extends AbstractReferenceCountedByteBuf {
         checkNewCapacity(newCapacity);
         byte[] oldArray = array;
         int oldCapacity = oldArray.length;
+        //如果新容量和原来一样，则什么都不用做
         if (newCapacity == oldCapacity) {
             return this;
         }
 
+        // 需要复制的字节数
         int bytesToCopy;
         if (newCapacity > oldCapacity) {
+            // 如果新数组容量更大，则需要复制的字节数为oldCapacity
             bytesToCopy = oldCapacity;
         } else {
+            // 如果旧数组容量更大，更新读写索引,防止readerIndex超过newCapacity
             trimIndicesToCapacity(newCapacity);
+            // 需要复制的字节数为newCapacity
             bytesToCopy = newCapacity;
         }
         byte[] newArray = allocateArray(newCapacity);

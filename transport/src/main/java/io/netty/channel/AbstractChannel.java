@@ -47,6 +47,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
     private final Channel parent;
     private final ChannelId id;
     // unsafe类里实现了具体的连接与写数据，之所以命名为unsafe是不希望外部使用，并非是不安全的
+    // 实际处理I/O操作的类 封装ByteBuf的读写过程
     private final Unsafe unsafe;
     private final DefaultChannelPipeline pipeline;
     private final VoidChannelPromise unsafeVoidPromise = new VoidChannelPromise(this, false);
@@ -59,7 +60,9 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
     private boolean closeInitiated;
     private Throwable initialCloseCause;
 
-    /** Cache for the string representation of this channel */
+    /**
+     * Cache for the string representation of this channel
+     * 此通道的字符串表示形式的缓存,当channel处于active状态时，缓存此时的tostring内容，之后调用是直接返回这个值*/
     private boolean strValActive;
     private String strVal;
 
@@ -97,6 +100,9 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
     /**
      * Returns a new {@link DefaultChannelId} instance. Subclasses may override this method to assign custom
      * {@link ChannelId}s to {@link Channel}s that use the {@link AbstractChannel#AbstractChannel(Channel)} constructor.
+     * <p></p>
+     * 返回一个新的{@link DefaultChannelId}实例。
+     * 子类可以覆盖这个方法，将定制的{@link ChannelId}分配给使用{@link AbstractChannel#AbstractChannel(Channel)}构造函数的{@link Channel}。
      */
     protected ChannelId newId() {
         return DefaultChannelId.newInstance();
@@ -104,6 +110,11 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
     /**
      * Returns a new {@link DefaultChannelPipeline} instance.
+     * <p></p>
+     * DefaultChannelPipeline 只是一个 Handler 的容器，也可以理解为一个Handler链，具体的逻辑由Handler处理，
+     * 而每个Handler对应的Context都会分配一个EventLoop（默认是Channel注册的EventLoop），最终的请求还是要该EventLoop来执行，
+     * 而EventLoop中又调用Channel中的内部类Unsafe对应的方法。
+     * 如{@link io.netty.channel.DefaultChannelPipeline.HeadContext#bind(io.netty.channel.ChannelHandlerContext, java.net.SocketAddress, io.netty.channel.ChannelPromise)}
      */
     protected DefaultChannelPipeline newChannelPipeline() {
         return new DefaultChannelPipeline(this);
@@ -120,6 +131,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         ChannelOutboundBuffer buf = unsafe.outboundBuffer();
         // isWritable() is currently assuming if there is no outboundBuffer then the channel is not writable.
         // We should be consistent with that here.
+        // isWritable()当前假设 如果没有outboundBuffer，那么通道是不可写的。我们应该在这里保持一致。
         return buf != null ? buf.bytesBeforeUnwritable() : 0;
     }
 
@@ -332,6 +344,8 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
     /**
      * Create a new {@link AbstractUnsafe} instance which will be used for the life-time of the {@link Channel}
+     * <p></p>
+     * Unsafe类里实现了具体的连接与写数据。比如：网络的读，写，链路关闭，发起连接等。之所以命名为unsafe是不希望外部使用，并非是不安全的。
      */
     protected abstract AbstractUnsafe newUnsafe();
 

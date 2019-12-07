@@ -102,6 +102,18 @@ import java.util.Deque;
  *
  * memoryMap[id]= depth_of_id  is defined above
  * depthMap[id]= x  indicates that the first node which is free to be allocated is at depth x (from root)
+ * <p></p>
+ * {@link PoolSubpage} 可以用来分配的最小内存块单位
+ * <p>
+ * Chunk PoolSubpage的集合
+ * <p>
+ * PoolChunk主要负责内存块的分配及释放，chunk中的page会构建成一颗二叉树，默认情况下page的大小是8K,chunk的大小是2^11 page，即16M，
+ * 构成了11层的二叉树，最下面一层的叶子节点有8192个，与page的数目一样，每一次内存的分配必须保证连续性，方便内存操作。
+ * <p>
+ * 每个节点会记录自己在Memory Area的偏移地址，当一个节点表示的内存区域被分配之后，那么该节点会被标志为已分配，
+ * 该节点的所有子节点的内存请求都会忽略。每次内存分配的都是8k(2^n)大小的内存块，当需要分配大小为chunkSize/(2^k)的内存端时，
+ * 为了找到可用的内存段，会从第K层左边开始寻找可用节点。
+
  */
 final class PoolChunk<T> implements PoolChunkMetric {
 

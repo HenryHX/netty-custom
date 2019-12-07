@@ -24,6 +24,9 @@ import io.netty.util.internal.ReferenceCountUpdater;
  * Abstract base class for {@link ByteBuf} implementations that count references.
  */
 public abstract class AbstractReferenceCountedByteBuf extends AbstractByteBuf {
+    // 用于标识refCnt字段在AbstractReferenceCountedByteBuf 中内存地址，该地址的获取是JDK实现强相关的，
+    // 如果是SUN的JDK,它通过sun.misc.Unsafe的objectFieldOffset接口获得的，
+    // ByteBuf的实现类UnpooledUnsafeDirectByteBuf和PooledUnsafeDirectByteBuf会使用这个偏移量。
     private static final long REFCNT_FIELD_OFFSET =
             ReferenceCountUpdater.getUnsafeOffset(AbstractReferenceCountedByteBuf.class, "refCnt");
     private static final AtomicIntegerFieldUpdater<AbstractReferenceCountedByteBuf> AIF_UPDATER =
@@ -42,6 +45,7 @@ public abstract class AbstractReferenceCountedByteBuf extends AbstractByteBuf {
     };
 
     // Value might not equal "real" reference count, all access should be via the updater
+    // volatile修饰的refCnt字段用于跟踪对象的引用次数，使用volatile是为了解决多线程并发的可见性问题。
     @SuppressWarnings("unused")
     private volatile int refCnt = updater.initialValue();
 
@@ -114,6 +118,8 @@ public abstract class AbstractReferenceCountedByteBuf extends AbstractByteBuf {
 
     /**
      * Called once {@link #refCnt()} is equals 0.
+     * UnpooledUnsafeDirectByteBuf和UnpooledDirectByteBuf的deallocate最终都是通过Cleaner类进行堆外的垃圾回收。
+     * Cleaner 是PhantomReference（虚引用）的子类。
      */
     protected abstract void deallocate();
 }

@@ -33,6 +33,11 @@ import java.nio.channels.ScatteringByteChannel;
  * A NIO {@link ByteBuffer} based buffer. It is recommended to use
  * {@link UnpooledByteBufAllocator#directBuffer(int, int)}, {@link Unpooled#directBuffer(int)} and
  * {@link Unpooled#wrappedBuffer(ByteBuffer)} instead of calling the constructor explicitly.
+ * <p></p>
+ * UnpooledDirectByteBuf是一个聚合对象，内部维护了一个java.nio.ByteBuffer的直接对外内存空间，
+ * 释放UnpooledDirectByteBuf中堆外内存的时机，就是在UnpooledDirectByteBuf被java垃圾回收的时候，
+ * 应该于此同时需要释放指向的堆外内存，但堆外内存不受JVM GC的管理，
+ * 所以我们只有感知到UnpooledDirectByteBuf被JVM虚拟机回收后（虚引用），手动去释放堆外内存
  */
 public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
 
