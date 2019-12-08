@@ -378,8 +378,11 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
     @Override
     protected void doWrite(ChannelOutboundBuffer in) throws Exception {
         SocketChannel ch = javaChannel();
-        int writeSpinCount = config().getWriteSpinCount();
+        int writeSpinCount = config().getWriteSpinCount(); // 写入自旋计数, default 16次
+        // doWrite是一个写循环操作，当满足一定条件时会结束循环。每一次循环会完成的操作：
         do {
+            // 判断当前ChannelOutboundBuffer中的数据都已经被传输完了，如果已经传输完了，并且发现NioSocketChannel还注册有SelectionKey.OP_WRITE事件，
+            // 则将SelectionKey.OP_WRITE从感兴趣的事件中移除，即，Selector不再监听该NioSocketChannel的可写事件了。然后跳出循环，方法返回。
             if (in.isEmpty()) {
                 // All written so clear OP_WRITE
                 clearOpWrite();
@@ -389,7 +392,13 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
 
             // Ensure the pending writes are made of ByteBufs only.
             int maxBytesPerGatheringWrite = ((NioSocketChannelConfig) config).getMaxBytesPerGatheringWrite();
+            // 获取所有待写出的ByteBuffer，它会将ChannelOutboundBuffer中所有待写出的ByteBuf转换成JDK Bytebuffer
+            // （因为，底层依旧是基于JDK NIO的网络传输，所有最终传输的还是JDK 的ByteBuffer对象）。
+            // 它依次出去每个待写的ByteBuf，然后根据ByteBuf的信息构建一个ByteBuffer（这里的ByteBuf是一个堆外ByteBuf，
+            // 因此构建出来的ByteBuffer也是一个堆外的ByteBuffer），并设置该ByteBuffer的readerIndex、readableBytes的值为ByteBuf对应的值。
+            // 然后返回构建好的ByteBuffer[]数组。
             ByteBuffer[] nioBuffers = in.nioBuffers(1024, maxBytesPerGatheringWrite);
+            // 获取本次循环需要写出的ByteBuffer个数
             int nioBufferCnt = in.nioBufferCount();
 
             // Always us nioBuffers() to workaround data-corruption.
@@ -397,20 +406,42 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
             switch (nioBufferCnt) {
                 case 0:
                     // We have something else beside ByteBuffers to write so fallback to normal writes.
+                    // 除了ByteBuffers，我们还需要写些别的东西，这样就可以退回到正常的写操作。
+                    /**
+                     * nioBufferCnt == 0 ：对非ByteBuffer对象的数据进行普通的写操作。
+                     * 上面说了in.nioBuffers()会将ChannelOutboundBuffer中所有待发送的ByteBuf转换成Bytebuffer后返回一个ByteBuffer[]数组，
+                     * 以便后面进行ByteBuffer的传输，而nioBufferCnt则表示待发送ByteBuffer的个数，即ByteBuffer[]数组的长度。
+                     * 注意，这里nioBuffers()仅仅是对ByteBuf对象进行了操作，但是我们从前面的流程可以得知，
+                     * 除了ByteBuf外FileRegion对象也是可以进行底层的网络传输的。因此当待传输的对象是FileRegion时“nioBufferCnt == 0”，
+                     * 那么这是就会调用{@link AbstractNioByteChannel#doWrite(ChannelOutboundBuffer in)}方法来完成数据的传输。
+                     * 实际上底层就是依靠JDK NIO 的 FileChannel来实现零拷贝的数据传输。
+                     */
                     writeSpinCount -= doWrite0(in);
                     break;
                 case 1: {
                     // Only one ByteBuf so use non-gathering write
                     // Zero length buffers are not added to nioBuffers by ChannelOutboundBuffer, so there is no need
                     // to check if the total size of all the buffers is non-zero.
+                    /**
+                     *  nioBufferCnt == 1 ：说明只有一个ByteBuffer等待被传输，那么不使用gather的write操作来传输数据
+                     *                      （JDK NIO 支持一次写单个ByteBuffer 以及 一次写多个ByteBuffer的聚集写模式）
+                     */
                     ByteBuffer buffer = nioBuffers[0];
                     int attemptedBytes = buffer.remaining();
                     final int localWrittenBytes = ch.write(buffer);
+                    /**
+                     * ch.write操作会返回本次写操作写出的字节数，但该方法返回0时，即localWrittenBytes为0，则
+                     * 说明底层的写缓冲区已经满了(这里应该指的是linux底层的写缓冲区满了)，这时就会将setOpWrite置为true，
+                     * 那么这种情况下就会注册当前SocketChannel的写事件（SelectionKey.OP_WRITE）到对应的Selector为感兴趣的事件，
+                     * 这样当写缓冲区有空间时，就会触发SelectionKey.OP_WRITE就绪事件，
+                     * NioEventLoop的事件循环在处理SelectionKey.OP_WRITE事件时会执行forceFlush()以继续发送外发送完的数据。
+                     */
                     if (localWrittenBytes <= 0) {
                         incompleteWrite(true);
                         return;
                     }
                     adjustMaxBytesPerGatheringWrite(attemptedBytes, localWrittenBytes, maxBytesPerGatheringWrite);
+                    // 释放所有已经写出去的缓存对象，并修改部分写缓冲的索引。
                     in.removeBytes(localWrittenBytes);
                     --writeSpinCount;
                     break;
@@ -419,6 +450,11 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
                     // Zero length buffers are not added to nioBuffers by ChannelOutboundBuffer, so there is no need
                     // to check if the total size of all the buffers is non-zero.
                     // We limit the max amount to int above so cast is safe
+                    /**
+                     * nioBufferCnt > 1 ：说明有多个ByteBuffer等待被传输，那么使用JDK NIO的聚集写操作，
+                     *                      一次性传输多个ByteBuffer到NioSocketChannel中。
+                     */
+                    // 获取本次循环总共需要写出的数据的字节总数
                     long attemptedBytes = in.nioBufferSize();
                     final long localWrittenBytes = ch.write(nioBuffers, 0, nioBufferCnt);
                     if (localWrittenBytes <= 0) {
@@ -435,6 +471,20 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
             }
         } while (writeSpinCount > 0);
 
+        /**
+         * done表示本次写操作是否完成，。有两种情况下done为false：
+         * <p></p>
+         * [1] 还有未写完的数据待发送，并且写缓冲区已经满了(这里指的是linux底层的写缓冲区满了)，无法再继续写出，那么此时setOpWrite标识为true。
+         * 这种情况下就会注册当前SocketChannel的写事件（SelectionKey.OP_WRITE）到对应的Selector为感兴趣的事件，
+         * 这样当写缓冲区有空间时，就会触发SelectionKey.OP_WRITE就绪事件， NioEventLoop的事件循环在处理SelectionKey.OP_WRITE事件时
+         * 会执行{@link AbstractNioUnsafe#forceFlush()}以继续发送外发送完的数据。接着退出doWrite()循环写操作。
+         * <p></p>
+         * [2] 执行了config().getWriteSpinCount()次（默认16次）socket写操作后，数据仍旧未写完，
+         * 那么此时会将flush()操作封装成一个task提交至NioEventLoop的taskQueue中，这样在NioEventLoop的下一次事件循环时会就会取出该任务并执行，
+         * 也就会继续写出未写完的任务了。这也说明了，如果发送的是很大的数据包的话，可能一次写循环操作是无法将数据全部发送出去的，
+         * 也不会为了发送该大数据包的数据而导致NioEventLoop线程的阻塞以至于影响NioEventLoop上其他Channel的操作和响应。
+         * 接着退出doWrite()循环写操作。
+         */
         incompleteWrite(writeSpinCount < 0);
     }
 

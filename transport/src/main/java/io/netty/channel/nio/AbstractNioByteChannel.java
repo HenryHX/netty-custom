@@ -264,6 +264,11 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
         incompleteWrite(writeSpinCount < 0);
     }
 
+    /**
+     * 过滤待发送的消息，只有ByteBuf（堆 or 非堆）以及 FileRegion可以进行最终的Socket网络传输，
+     * 其他类型的数据是不支持的，会抛UnsupportedOperationException异常。并且会把堆ByteBuf转换为一个非堆的ByteBuf返回。
+     * 也就说，最后会通过socket传输的对象时非堆的ByteBuf和FileRegion。
+     */
     @Override
     protected final Object filterOutboundMessage(Object msg) {
         if (msg instanceof ByteBuf) {

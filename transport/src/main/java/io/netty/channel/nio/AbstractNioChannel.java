@@ -358,7 +358,11 @@ public abstract class AbstractNioChannel extends AbstractChannel {
             // Flush immediately only when there's no pending flush.
             // If there's a pending flush operation, event loop will call forceFlush() later,
             // and thus there's no need to call it now.
+            // 只有在没有挂起的刷新时才会立即刷新。
+            // 如果有一个挂起的刷新操作，事件循环将在稍后调用forceFlush()，
+            // 因此，现在没有必要调用它。
             if (!isFlushPending()) {
+                // 当socket写缓冲区未满，那么就执行flush0()
                 super.flush0();
             }
         }
@@ -369,6 +373,16 @@ public abstract class AbstractNioChannel extends AbstractChannel {
             super.flush0();
         }
 
+        /**
+         * 判断flush操作是否需要被挂起
+         * <p></p>
+         * 首先会判断当前NioSocketChannel的SelectionKey.OP_WRITE事件是否有被注册到对应的Selector上，
+         * 如果有，则说明当前写缓冲区已经满了(这里指是socket的写缓冲区满了，并且socket并没有被关闭，那么write操作将返回0。
+         * <p></p>
+         * 这是如果还有未写出的数据待被发送，那么就会注册SelectionKey.OP_WRITE事件)。
+         * 等写缓冲区有空间时，SelectionKey.OP_WRITE事件就会被触发，
+         * 到时NioEventLoop的事件循环就会调用forceFlush()方法来继续将为写出的数据写出，所以这里直接返回就好。
+         */
         private boolean isFlushPending() {
             SelectionKey selectionKey = selectionKey();
             return selectionKey.isValid() && (selectionKey.interestOps() & SelectionKey.OP_WRITE) != 0;

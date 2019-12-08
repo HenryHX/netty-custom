@@ -736,6 +736,10 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         }
     }
 
+    /**
+     * 将消息放入输出缓冲区中（ChannelOutboundBuffer）
+     * 最终会调用到ChannelPipeline中head的{@link AbstractChannel.AbstractUnsafe#write(java.lang.Object, io.netty.channel.ChannelPromise)}
+     */
     private void invokeWrite0(Object msg, ChannelPromise promise) {
         try {
             ((ChannelOutboundHandler) handler()).write(this, msg, promise);
@@ -769,6 +773,10 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         }
     }
 
+    /**
+     * 将输出缓冲区中的数据通过socket发送到网络中
+     * 最终会调用到ChannelPipeline中head的{@link AbstractChannel.AbstractUnsafe#flush()}
+     */
     private void invokeFlush0() {
         try {
             ((ChannelOutboundHandler) handler()).flush(this);

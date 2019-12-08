@@ -55,12 +55,17 @@ import static java.lang.Math.min;
  */
 public final class ChannelOutboundBuffer {
     // Assuming a 64-bit JVM:
-    //  - 16 bytes object header
-    //  - 8 reference fields
-    //  - 2 long fields
-    //  - 2 int fields
-    //  - 1 boolean field
+    //  - 16 bytes object header 对象头16
+    //  - 8 reference fields 6*8（这个地方计算有问题？？事实上只有6个）
+    //  - 2 long fields 2*8
+    //  - 2 int fields  2*4
+    //  - 1 boolean field 1
     //  - padding
+    // 16 + 48 + 16 + 8 + 1 = 89 + 7bytes的padding = 96
+    // 假设的是64位操作系统下，且没有使用各种压缩选项的情况。
+    // 对象头的长度占16字节；引用属性占8字节；long类型占8字节；int类型占4字节；boolean类型占1字节。
+    // 同时，由于HotSpot VM的自动内存管理系统要求对象起始地址必须是8字节的整数倍，也就是说对象的大小必须是8字节的整数倍，
+    // 如果最终字节数不为8的倍数，则padding会补足至8的倍数。
     static final int CHANNEL_OUTBOUND_BUFFER_ENTRY_OVERHEAD =
             SystemPropertyUtil.getInt("io.netty.transport.outboundBufferEntrySizeOverhead", 96);
 
@@ -98,12 +103,18 @@ public final class ChannelOutboundBuffer {
     private static final AtomicLongFieldUpdater<ChannelOutboundBuffer> TOTAL_PENDING_SIZE_UPDATER =
             AtomicLongFieldUpdater.newUpdater(ChannelOutboundBuffer.class, "totalPendingSize");
 
+    // 记录了该ChannelOutboundBuffer中所有待发送Entry对象占的总内存大小和所有待发送数据的大小。
     @SuppressWarnings("UnusedDeclaration")
     private volatile long totalPendingSize;
 
     private static final AtomicIntegerFieldUpdater<ChannelOutboundBuffer> UNWRITABLE_UPDATER =
             AtomicIntegerFieldUpdater.newUpdater(ChannelOutboundBuffer.class, "unwritable");
 
+    /**
+     * unwritable用来标示当前该Channel要发送的数据是否已经超过了设定 or 默认的WriteBufferWaterMark的high值。
+     * 如果当前操作导致了待写出的数据（包括Entry对象大小以及真实需要传输数据的大小）超过了设置写缓冲区的高水位，
+     * 那么将会触发fireChannelWritabilityChanged事件。
+     */
     @SuppressWarnings("UnusedDeclaration")
     private volatile int unwritable;
 
@@ -116,6 +127,7 @@ public final class ChannelOutboundBuffer {
     /**
      * Add given message to this {@link ChannelOutboundBuffer}. The given {@link ChannelPromise} will be notified once
      * the message was written.
+     * 将给定的消息添加到 ChannelOutboundBuffer，一旦消息被写入，就会通知 promise。
      */
     public void addMessage(Object msg, int size, ChannelPromise promise) {
         Entry entry = Entry.newInstance(msg, size, total(msg), promise);
@@ -155,7 +167,14 @@ public final class ChannelOutboundBuffer {
         // where added in the meantime.
         //
         // See https://github.com/netty/netty/issues/2577
+        // write操作最终会将包含有待发送消息的ByteBuf封装成Entry对象放入unflushedEntry单向链表的尾部。
+        // 而这里就会先判断unflushedEntry是否为null，如果为null则说明所有的entries已经被flush了，
+        // 并在此期间没有新的消息被添加进ChannelOutboundBuffer中。所以直接返回就好。
         Entry entry = unflushedEntry;
+
+        // 如果unflushedEntry非空，则说明有待发送的entries等待被发送。
+        // 那么将unflushedEntry赋值给flushedEntry（调用flush()操作时就是将该flushedEntry单向链表中的entries的数据发到网络），
+        // 并将unflushedEntry置为null，表示没有待发送的entries了。并通过flushed成员属性记录待发送entries的个数。
         if (entry != null) {
             // 如果 flushedEntry == null 说明当前没有正在刷新的任务，则把 entry 设置为 flushedEntry 刷新的起点。
             if (flushedEntry == null) {
@@ -361,6 +380,9 @@ public final class ChannelOutboundBuffer {
     /**
      * Removes the fully written entries and update the reader index of the partially written entry.
      * This operation assumes all messages in this buffer is {@link ByteBuf}.
+     * <p></p>
+     * 通过已经写出数据的字节数来清理或修改ByteBuf。也就是说writtenBytes的大小可能是包含了多个ByteBuf以及某个ByteBuf的部分数据
+     * (因为一个ByteBuf可能只写出了部分数据，还未完成被写出到网络层中)。
      */
     public void removeBytes(long writtenBytes) {
         for (;;) {
@@ -374,13 +396,32 @@ public final class ChannelOutboundBuffer {
             final int readerIndex = buf.readerIndex();
             final int readableBytes = buf.writerIndex() - readerIndex;
 
+            /**
+             * 这个if判断表示：本次socket的write操作(这里是真的是网络通信写操作了)已经写出去的字节数”大于"了当前ByteBuf包可读取的字节数。
+             * 这说明，当前这个包中所有的可写的数据都已经写完了，既然当前这个ByteBuf的数据都写完了，那么久可以将其删除了。
+             * 即，调用『remove()』操作，这个操作就会标识异步write操作为成功完成，
+             * 并且会回调已经注册到ByteBuf的promise上的所有listeners。同时会原子的修改ChannelOutboundBuffer的totalPendingSize属性值，
+             * 减少已经写出的数据大小（包括Entry对象内存大小和真实数据的大小），
+             * 并且如果减少后totalPendingSize小于设置 or 默认的WriteBufferWaterMark的low值，
+             * 并且在此之前totalPendingSize超过了WriteBufferWaterMark的high值，那么将触发fireChannelWritabilityChanged事件。
+             * 『remove()』操作还会将当前的ByteBuf指向下一个待处理的ByteBuf，最后释放这个已经被写出去的ByteBuf对象资源。
+             */
             if (readableBytes <= writtenBytes) {
                 if (writtenBytes != 0) {
                     progress(readableBytes);
+                    // writtenBytes > readableBytes 表示已经有多个entry被写到socket，此时要以此删除成功写完的entry
                     writtenBytes -= readableBytes;
                 }
                 remove();
             } else { // readableBytes > writtenBytes
+                /**
+                 * 大数据包走的是else流程。也就是说，本次真实写出去的数据 比 当前这个ByteBuf的可读取数据要小
+                 * （也就说明，当前这个ByteBuf还没有被完全的写完。因此并不会通过调用『remove()』操作。
+                 * 直到整个大数据包所有的内容都写出去了，那么这时if(readableBytes <= writtenBytes)才会为真执行『remove()』完成相关后续的操作）。
+                 * 那么此时，会根据已经写出的字节数大小修改该ByteBuf的readerIndex索引值。
+                 * 并且，如果该异步写操作的ChannelPromise是ChannelProgressivePromise对象并且注册了相应的progressiveListeners事件，
+                 * 则该listener会得到回调。你可以通过该listener来观察到大数据包写出去的进度。
+                 */
                 if (writtenBytes != 0) {
                     buf.readerIndex(readerIndex + (int) writtenBytes);
                     progress(writtenBytes);
@@ -842,13 +883,21 @@ public final class ChannelOutboundBuffer {
 
         private final Handle<Entry> handle;
         Entry next;
+        // 原始消息对象的引用;
         Object msg;
         ByteBuffer[] bufs;
         ByteBuffer buf;
+        // 该异步写操作的ChannelPromise（用于在完成真是的网络层write后去标识异步操作的完成以及回调已经注册到该promise上的listeners）;
         ChannelPromise promise;
         long progress;
+        // 待发送数据包的总大小（该属性与pendingSize的区别在于，如果是待发送的是FileRegion数据对象，
+        // 则pengdingSize中只有对象内存的大小，即真实的数据大小被记录为0；但total属性则是会记录FileRegion中数据大小，
+        // 并且total属性是不包含对象内存大小，仅仅是对数据本身大小的记录）;
         long total;
+        // 记录有该ByteBuf or ByteBufs 中待发送数据大小 和 对象本身内存大小 的累加和;
+        // pendingSize属性记录的不单单是写请求数据的大小，记录的是这个写请求对象的大小。
         int pendingSize;
+        // 写消息数据个数的记录（如果写消息数据是个数组的话，该值会大于1）
         int count = -1;
         boolean cancelled;
 

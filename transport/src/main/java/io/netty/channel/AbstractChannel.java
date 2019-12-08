@@ -16,6 +16,7 @@
 package io.netty.channel;
 
 import io.netty.buffer.ByteBufAllocator;
+import io.netty.channel.nio.AbstractNioByteChannel;
 import io.netty.channel.socket.ChannelOutputShutdownEvent;
 import io.netty.channel.socket.ChannelOutputShutdownException;
 import io.netty.util.DefaultAttributeMap;
@@ -873,7 +874,11 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         public final void write(Object msg, ChannelPromise promise) {
             assertEventLoop();
 
+            // 获取该NioSocketChannel的ChannelOutboundBuffer成员属性。
+            //（确切地来说ChannelOutboundBuffer是NioSocketChannelUnsafe对象中的成员属性，而NioSocketChannelUnsafe才是NioSocketChannel的成员属性。）
+            // 每一个NioSocketChannel会维护一个它们自己的ChannelOutboundBuffer，用于存储待出站写请求。
             ChannelOutboundBuffer outboundBuffer = this.outboundBuffer;
+            // 判断该outboundBuffer是否为null，如果为null则说明该NioSocketChannel已经关闭了，那么就会标志该异步写操作为失败完成，并释放写消息后返回。
             if (outboundBuffer == null) {
                 // If the outboundBuffer is null we know the channel was closed and so
                 // need to fail the future right away. If it is not null the handling of the rest
@@ -887,7 +892,13 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
             int size;
             try {
+                /**
+                 * 过滤待发送的消息 {@link AbstractNioByteChannel#filterOutboundMessage(java.lang.Object)}
+                 * <p></p>
+                 * 估计待发送消息数据的大小 {@link DefaultMessageSizeEstimator.HandleImpl#size(java.lang.Object)}
+                 */
                 msg = filterOutboundMessage(msg);
+                // 如果是FileRegion的话直接饭0，否则返回ByteBuf中可读取字节.
                 size = pipeline.estimatorHandle().size(msg);
                 if (size < 0) {
                     size = 0;
@@ -898,6 +909,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
 
+            // 将消息加入outboundBuffer中等待发送。
             outboundBuffer.addMessage(msg, size, promise);
         }
 
@@ -910,6 +922,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
 
+            // 添加一个flush到这个ChannelOutboundBuffer，这意味着，将在此之前添加的消息标记为flushed，你将可以处理这些消息。
             outboundBuffer.addFlush();
             flush0();
         }
@@ -918,9 +931,11 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         protected void flush0() {
             if (inFlush0) {
                 // Avoid re-entrance
+                // 避免再进来时
                 return;
             }
 
+            // 判断Channel的输出缓冲区是否为null或待发送的数据个数为0，如果是则直接返回，因为此时并没有数据需要发送。
             final ChannelOutboundBuffer outboundBuffer = this.outboundBuffer;
             if (outboundBuffer == null || outboundBuffer.isEmpty()) {
                 return;
@@ -929,6 +944,15 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             inFlush0 = true;
 
             // Mark all pending write requests as failure if the channel is inactive.
+            // 如果通道处于非活动状态，则将所有挂起的写请求标记为失败。
+
+            // 判断当前的NioSocketChannel是否是Inactive状态，
+            //      如果是，则会标识所有等待写请求为失败（即所有的write操作的promise都会是失败完成），
+            //      并且如果NioSocketChannel已经关闭了，
+            //          失败的原因是“FLUSH0_CLOSED_CHANNEL_EXCEPTION”且不会触发notifyWritability事件；
+            //      但如果NioSocketChannel还是open的，
+            //          则失败的原始是“FLUSH0_NOT_YET_CONNECTED_EXCEPTION”并且会触发notifyWritability。
+
             if (!isActive()) {
                 try {
                     if (isOpen()) {
@@ -944,6 +968,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             }
 
             try {
+                // 将Channel输出缓冲区中的数据通过socket传输给对端：
                 doWrite(outboundBuffer);
             } catch (Throwable t) {
                 if (t instanceof IOException && config().isAutoClose()) {
@@ -1136,6 +1161,12 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
     /**
      * Invoked when a new message is added to a {@link ChannelOutboundBuffer} of this {@link AbstractChannel}, so that
      * the {@link Channel} implementation converts the message to another. (e.g. heap buffer -> direct buffer)
+     * <p></p>
+     * 当一个新消息被添加到这个{@link AbstractChannel}的{@link ChannelOutboundBuffer}中时Invoked,
+     * 使{@link Channel}实现将消息转换为另一个消息。(例如:堆缓冲区->直接缓冲区)
+     * <p></p>
+     * 如{@link AbstractNioByteChannel#filterOutboundMessage(java.lang.Object)}
+     *
      */
     protected Object filterOutboundMessage(Object msg) throws Exception {
         return msg;
