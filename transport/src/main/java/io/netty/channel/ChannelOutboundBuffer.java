@@ -52,6 +52,8 @@ import static java.lang.Math.min;
  * <li>{@link #getUserDefinedWritability(int)} and {@link #setUserDefinedWritability(int, boolean)}</li>
  * </ul>
  * </p>
+ *
+ * 由{@link WriteBufferWaterMark}可知：默认的情况下，ChannelOutboundBuffer 缓存区的大小最大是 64 kb，最小是 32 kb
  */
 public final class ChannelOutboundBuffer {
     // Assuming a 64-bit JVM:
@@ -325,6 +327,9 @@ public final class ChannelOutboundBuffer {
      * Will remove the current message, mark its {@link ChannelPromise} as failure using the given {@link Throwable}
      * and return {@code true}. If no   flushed message exists at the time this method is called it will return
      * {@code false} to signal that no more messages are ready to be handled.
+     * <p></p>
+     * 将删除当前消息，使用给定的{@link Throwable}将其{@link ChannelPromise}标记为失败，并返回{@code true}。
+     * 如果在调用此方法时不存在刷新消息，它将返回{@code false}，以表明不再准备处理任何消息。
      */
     public boolean remove(Throwable cause) {
         return remove0(cause, true);
@@ -460,32 +465,43 @@ public final class ChannelOutboundBuffer {
      * Returns an array of direct NIO buffers if the currently pending messages are made of {@link ByteBuf} only.
      * {@link #nioBufferCount()} and {@link #nioBufferSize()} will return the number of NIO buffers in the returned
      * array and the total number of readable bytes of the NIO buffers respectively.
+     * <p>将刷新链中的写请求对象消息放到nio buf数组中。#nioBufferCount和#nioBufferSize，将返回当前nio buf数组的长度
+     *  和可读字节数
+     * </p>
      * <p>
      * Note that the returned array is reused and thus should not escape
      * {@link AbstractChannel#doWrite(ChannelOutboundBuffer)}.
      * Refer to {@link NioSocketChannel#doWrite(ChannelOutboundBuffer)} for an example.
      * </p>
+     * <p>返回的nio buf将会被 {@link NioSocketChannel#doWrite(ChannelOutboundBuffer)}方法重用 </p>
      * @param maxCount The maximum amount of buffers that will be added to the return value.
+     *                 将添加到返回值的缓冲区的最大数量。
      * @param maxBytes A hint toward the maximum number of bytes to include as part of the return value. Note that this
      *                 value maybe exceeded because we make a best effort to include at least 1 {@link ByteBuffer}
      *                 in the return value to ensure write progress is made.
+     *                 指向返回值中包含的最大字节数的提示。注意，这个返回值可能超过了这个值，
+     *                 因为我们尽了最大的努力在返回值中包含至少1个{@link ByteBuffer}，以确保进行写操作。
      */
     public ByteBuffer[] nioBuffers(int maxCount, long maxBytes) {
         assert maxCount > 0;
         assert maxBytes > 0;
         long nioBufferSize = 0;
         int nioBufferCount = 0;
+        // 获取通道Outbound缓存区线程本地的niobuf数组
         final InternalThreadLocalMap threadLocalMap = InternalThreadLocalMap.get();
         ByteBuffer[] nioBuffers = NIO_BUFFERS.get(threadLocalMap);
         Entry entry = flushedEntry;
+        // 遍历刷新链，链上的写请求Entry的消息必须为ByteBuf
         while (isFlushedEntry(entry) && entry.msg instanceof ByteBuf) {
             if (!entry.cancelled) {
+                // 在写请求没有取消的情况下，获取写请求消息buf，及buf的读索引，和可读字节数
                 ByteBuf buf = (ByteBuf) entry.msg;
                 final int readerIndex = buf.readerIndex();
                 final int readableBytes = buf.writerIndex() - readerIndex;
 
                 if (readableBytes > 0) {
                     if (maxBytes - readableBytes < nioBufferSize && nioBufferCount != 0) {
+                        // 如果消息buf可读字节数+nioBufferSize大于整数的最大值，则跳出循环
                         // If the nioBufferSize + readableBytes will overflow maxBytes, and there is at least one entry
                         // we stop populate the ByteBuffer array. This is done for 2 reasons:
                         // 1. bsd/osx don't allow to write more bytes then Integer.MAX_VALUE with one writev(...) call
@@ -507,20 +523,23 @@ public final class ChannelOutboundBuffer {
                     }
                     int neededSpace = min(maxCount, nioBufferCount + count);
                     if (neededSpace > nioBuffers.length) {
+                        // 如果buf需求数量大于当前nio buf数组，则扩容nio数组为原来的2的指数级容量增长，直至大于neededSpace
                         nioBuffers = expandNioBufferArray(nioBuffers, neededSpace, nioBufferCount);
+                        // 更新nio buf数组
                         NIO_BUFFERS.set(threadLocalMap, nioBuffers);
                     }
                     if (count == 1) {
                         ByteBuffer nioBuf = entry.buf;
                         if (nioBuf == null) {
-                            // cache ByteBuffer as it may need to create a new ByteBuffer instance if its a
-                            // derived buffer
+                            // cache ByteBuffer as it may need to create a new ByteBuffer instance if its a derived buffer
+                            // 缓存ByteBuffer，因为它可能需要创建一个新的ByteBuffer实例，如果它是一个派生的缓冲区
                             entry.buf = nioBuf = buf.internalNioBuffer(readerIndex, readableBytes);
                         }
                         nioBuffers[nioBufferCount++] = nioBuf;
                     } else {
                         // The code exists in an extra method to ensure the method is not too big to inline as this
                         // branch is not very likely to get hit very frequently.
+                        // 代码存在于一个额外的方法中，以确保该方法不会太大而不能内联，因为这个分支不太可能经常被攻击。
                         nioBufferCount = nioBuffers(entry, buf, nioBuffers, nioBufferCount, maxCount);
                     }
                     if (nioBufferCount == maxCount) {
@@ -555,6 +574,13 @@ public final class ChannelOutboundBuffer {
         return nioBufferCount;
     }
 
+    /**
+     * ByteBuffer数组扩容
+     * @param array 原数组
+     * @param neededSpace 期望的目标容量
+     * @param size 原数组大小
+     * @return
+     */
     private static ByteBuffer[] expandNioBufferArray(ByteBuffer[] array, int neededSpace, int size) {
         int newCapacity = array.length;
         do {
@@ -597,6 +623,10 @@ public final class ChannelOutboundBuffer {
      * not exceed the write watermark of the {@link Channel} and
      * no {@linkplain #setUserDefinedWritability(int, boolean) user-defined writability flag} has been set to
      * {@code false}.
+     * <p></p>
+     * 缓冲区是否可写
+     * true:当且仅当totalPendingWriteBytes方法的通道可写字节数，不超过通道的写watermark，同时
+     * 用户没有使用#setUserDefinedWritability，设置可写标志为false
      */
     public boolean isWritable() {
         return unwritable == 0;
@@ -612,6 +642,7 @@ public final class ChannelOutboundBuffer {
 
     /**
      * Sets a user-defined writability flag at the specified index.
+     * 根据可写状态，设置用户定义的可写标志
      */
     public void setUserDefinedWritability(int index, boolean writable) {
         if (writable) {
@@ -737,8 +768,12 @@ public final class ChannelOutboundBuffer {
         }
     }
 
+    /**
+     * 关闭Outbound缓存区
+     */
     void close(final Throwable cause, final boolean allowChannelOpen) {
         if (inFail) {
+            // 已经刷新失败，则创建关闭任务线程，委托给事件循环执行
             channel.eventLoop().execute(new Runnable() {
                 @Override
                 public void run() {
@@ -759,14 +794,17 @@ public final class ChannelOutboundBuffer {
         }
 
         // Release all unflushed messages.
+        // 遍历未刷新的写请求，更新写任务失败
         try {
             Entry e = unflushedEntry;
             while (e != null) {
                 // Just decrease; do not trigger any events via decrementPendingOutboundBytes()
                 int size = e.pendingSize;
+                // 更新通道待发送的字节数
                 TOTAL_PENDING_SIZE_UPDATER.addAndGet(this, -size);
 
                 if (!e.cancelled) {
+                    // 如果写任务没有取消，则释放消息，更新任务状态为失败
                     ReferenceCountUtil.safeRelease(e.msg);
                     safeFail(e.promise, cause);
                 }
@@ -806,8 +844,11 @@ public final class ChannelOutboundBuffer {
     /**
      * Get how many bytes can be written until {@link #isWritable()} returns {@code false}.
      * This quantity will always be non-negative. If {@link #isWritable()} is {@code false} then 0.
+     * <p></p>
+     * 返回直到通道不可写，通道Outbound缓冲区还可以写多少字节的数。如果通道不可写，则返回0
      */
     public long bytesBeforeUnwritable() {
+        // HighWaterMark() 默认值64*1024
         long bytes = channel.config().getWriteBufferHighWaterMark() - totalPendingSize;
         // If bytes is negative we know we are not writable, but if bytes is non-negative we have to check writability.
         // Note that totalPendingSize and isWritable() use different volatile variables that are not synchronized
@@ -821,8 +862,11 @@ public final class ChannelOutboundBuffer {
     /**
      * Get how many bytes must be drained from the underlying buffer until {@link #isWritable()} returns {@code true}.
      * This quantity will always be non-negative. If {@link #isWritable()} is {@code true} then 0.
+     * <p></p>
+     * 获取直到通道可写，通道底层buf有多少字节数据需要发送。如果可写返回0
      */
     public long bytesBeforeWritable() {
+        // HighWaterMark() 默认值32*1024
         long bytes = totalPendingSize - channel.config().getWriteBufferLowWaterMark();
         // If bytes is negative we know we are writable, but if bytes is non-negative we have to check writability.
         // Note that totalPendingSize and isWritable() use different volatile variables that are not synchronized
@@ -837,6 +881,9 @@ public final class ChannelOutboundBuffer {
      * Call {@link MessageProcessor#processMessage(Object)} for each flushed message
      * in this {@link ChannelOutboundBuffer} until {@link MessageProcessor#processMessage(Object)}
      * returns {@code false} or there are no more flushed messages to process.
+     * <p></p>
+     * 当刷新消息时，调用消息处理器的处理消息方法#processMessage，处理每个消息，直到#processMessage方法
+     *  返回false，或没有消息需要刷新
      */
     public void forEachFlushedMessage(MessageProcessor processor) throws Exception {
         if (processor == null) {

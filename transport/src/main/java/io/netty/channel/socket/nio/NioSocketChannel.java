@@ -391,6 +391,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
             }
 
             // Ensure the pending writes are made of ByteBufs only.
+            // 获取设置的每个 ByteBuf 的最大字节数，这个数字来自操作系统的 so_sndbuf 定义
             int maxBytesPerGatheringWrite = ((NioSocketChannelConfig) config).getMaxBytesPerGatheringWrite();
             // 获取所有待写出的ByteBuffer，它会将ChannelOutboundBuffer中所有待写出的ByteBuf转换成JDK Bytebuffer
             // （因为，底层依旧是基于JDK NIO的网络传输，所有最终传输的还是JDK 的ByteBuffer对象）。

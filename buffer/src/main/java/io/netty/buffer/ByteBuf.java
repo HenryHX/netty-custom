@@ -2307,6 +2307,7 @@ public abstract class ByteBuf implements ReferenceCounted, Comparable<ByteBuf> {
 
     /**
      * Internal use only: Exposes the internal NIO buffer.
+     * 仅供内部使用:公开内部NIO缓冲区。
      */
     public abstract ByteBuffer internalNioBuffer(int index, int length);
 
