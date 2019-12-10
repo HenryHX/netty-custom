@@ -25,11 +25,15 @@ import static io.netty.util.internal.ObjectUtil.checkNotNull;
 /**
  * Allocates a new receive buffer whose capacity is probably large enough to read all inbound data and small enough
  * not to waste its space.
+ * <p></p>
+ * 分配一个新的接收缓冲区，其容量可能大到足以读取所有入站数据，并且小到不会浪费空间。
  */
 public interface RecvByteBufAllocator {
     /**
      * Creates a new handle.  The handle provides the actual operations and keeps the internal information which is
      * required for predicting an optimal buffer capacity.
+     * <p></p>
+     * 创建一个新handle。该handle提供实际操作并保存预测最佳缓冲区容量所需的内部信息。
      */
     Handle newHandle();
 
@@ -112,7 +116,9 @@ public interface RecvByteBufAllocator {
     interface ExtendedHandle extends Handle {
         /**
          * Same as {@link Handle#continueReading()} except "more data" is determined by the supplier parameter.
+         * <p>与{@link Handle#continueReading()}相同，但“更多数据”由supplier参数决定。</p>
          * @param maybeMoreDataSupplier A supplier that determines if there maybe more data to read.
+         *                              A supplier 确定是否可能有更多的数据读取。
          */
         boolean continueReading(UncheckedBooleanSupplier maybeMoreDataSupplier);
     }

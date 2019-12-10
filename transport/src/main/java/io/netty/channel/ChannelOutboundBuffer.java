@@ -746,6 +746,11 @@ public final class ChannelOutboundBuffer {
         return flushed == 0;
     }
 
+    /**
+     *
+     * @param cause
+     * @param notify false表示channel已经关闭，没必要在进行Writability notify了
+     */
     void failFlushed(Throwable cause, boolean notify) {
         // Make sure that this method does not reenter.  A listener added to the current promise can be notified by the
         // current thread in the tryFailure() call of the loop below, and the listener can trigger another fail() call
