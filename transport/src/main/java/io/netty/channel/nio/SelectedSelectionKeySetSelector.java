@@ -29,6 +29,9 @@ import java.util.Set;
  * 该对象是Netty提供的一个可以‘代替’Selector selectedKeys的对象。
  */
 final class SelectedSelectionKeySetSelector extends Selector {
+    /**
+     * 与当前channel注册的Selector内部的selectedKeys、publicSelectedKeys属性相同
+     */
     private final SelectedSelectionKeySet selectionKeys;
     private final Selector delegate;
 

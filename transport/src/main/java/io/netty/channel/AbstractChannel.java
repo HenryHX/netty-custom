@@ -569,7 +569,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                     return;
                 }
                 boolean firstRegistration = neverRegistered;
-                // 执行真正的register操作，留改子类实现
+                // 执行真正的register操作，留给子类实现
                 doRegister();
                 neverRegistered = false;
                 registered = true;
@@ -1177,6 +1177,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
         /**
          * Appends the remote address to the message of the exceptions caused by connection attempt failure.
+         * <p>将远程地址附加到连接尝试失败导致的异常的消息中。</p>
          */
         protected final Throwable annotateConnectException(Throwable cause, SocketAddress remoteAddress) {
             if (cause instanceof ConnectException) {

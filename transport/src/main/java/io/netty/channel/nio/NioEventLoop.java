@@ -29,6 +29,7 @@ import io.netty.util.internal.ReflectionUtil;
 import io.netty.util.internal.SystemPropertyUtil;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
+import sun.nio.ch.SelectorImpl;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
@@ -130,6 +131,12 @@ public final class NioEventLoop extends SingleThreadEventLoop {
      */
     private Selector selector;
     private Selector unwrappedSelector;
+
+    /**
+     * 和selector的{@link SelectedSelectionKeySetSelector#selectionKeys}、
+     * unwrappedSelector的{@link SelectorImpl#publicSelectedKeys}、
+     * unwrappedSelector的{@link SelectorImpl#publicKeys}是一个对象
+     */
     private SelectedSelectionKeySet selectedKeys;
 
     private final SelectorProvider provider;
