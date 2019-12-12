@@ -56,10 +56,11 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     private final SelectableChannel ch;
     // SelectionKey.OP_READ 读事件
     protected final int readInterestOp;
-    // 注册到 selector 上返回的 selectorKey
+    // 注册到 selector 上返回的 selectorKey, 默认是#SelectionKey.OP_READ=1
     volatile SelectionKey selectionKey;
     // 是否还有未读的数据
     boolean readPending;
+    // 取消channel read注册事件
     private final Runnable clearReadPendingRunnable = new Runnable() {
         @Override
         public void run() {
@@ -70,7 +71,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     /**
      * The future of the current connection attempt.  If not null, subsequent
      * connection attempts will fail.
-     * 连接操作的结果
+     * <p>当前连接尝试的结果。如果不为空，则后续的连接尝试将失败。</p>
      */
     private ChannelPromise connectPromise;
     // 连接超时定时任务
@@ -83,6 +84,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
      *
      * @param parent            the parent {@link Channel} by which this instance was created. May be {@code null}
      * @param ch                the underlying {@link SelectableChannel} on which it operates
+     *                          它操作的底层{@link SelectableChannel}
      * @param readInterestOp    the ops to set to receive data from the {@link SelectableChannel}
      */
     protected AbstractNioChannel(Channel parent, SelectableChannel ch, int readInterestOp) {
@@ -90,6 +92,17 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         this.ch = ch;
         this.readInterestOp = readInterestOp;
         try {
+            /**
+             * configureBlocking(),这个是设置channel的阻塞模式的,true代表block,false为non-block
+             * 一般用non-block配合Selector多路复用
+             * 可以参考具体的实现,{@link java.nio.channels.spi.AbstractSelectableChannel#configureBlocking}
+             * <p></p>
+             * SelectableChannel 在设计时,是可以处于"阻塞"或"非阻塞"两种模式下(configureBlocking方法设定).在"阻塞"模式下,每个I/O操作完成之前,都会阻塞其他的IO操作(参见 Channels.write/read,read使用readLock,write使用writeLock同步.).
+             * <p>
+             * 在"非阻塞"模式 下,永远不会阻塞IO操作,其将会使用Selector作为异步支持.即任何write和read将不阻塞,可能会立即返回.新创建的 SeletableChannel总是处于阻塞模式,
+             * 如果需要使用selector多路复用,那么必须使用非阻塞模式(API级别控制).当向某个Selector注册时,此Channel必须处于noblocking模式,且此后模式不可改变,再修改为blocking模式会报错
+             * 直到selectionKey销毁.
+             */
             ch.configureBlocking(false);
         } catch (IOException e) {
             try {
@@ -117,6 +130,10 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         return ch;
     }
 
+    /**
+     * eventLoop是在{@link AbstractUnsafe#register(io.netty.channel.EventLoop, io.netty.channel.ChannelPromise)}时候注册的
+     * @return
+     */
     @Override
     public NioEventLoop eventLoop() {
         return (NioEventLoop) super.eventLoop();
@@ -248,6 +265,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
             }
 
             try {
+                // 之前连接成功后将connectPromise=null
                 if (connectPromise != null) {
                     // Already a connect in process.
                     throw new ConnectionPendingException();
@@ -335,6 +353,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         public final void finishConnect() {
             // Note this method is invoked by the event loop only if the connection attempt was
             // neither cancelled nor timed out.
+            // 注意，只有在连接尝试既没有被取消也没有超时的情况下，事件循环才调用此方法。
 
             assert eventLoop().inEventLoop();
 
