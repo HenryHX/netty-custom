@@ -37,6 +37,9 @@ public interface ChannelPromise extends ChannelFuture, Promise<Void> {
     @Override
     ChannelPromise setFailure(Throwable cause);
 
+    /**
+     * {@link GenericFutureListener#operationComplete(io.netty.util.concurrent.Future)} 的入参Future就是ChannelPromise this实例}
+     */
     @Override
     ChannelPromise addListener(GenericFutureListener<? extends Future<? super Void>> listener);
 

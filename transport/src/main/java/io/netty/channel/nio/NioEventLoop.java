@@ -38,6 +38,8 @@ import java.nio.channels.SelectableChannel;
 import java.nio.channels.Selector;
 import java.nio.channels.SelectionKey;
 
+import java.nio.channels.spi.AbstractSelectionKey;
+import java.nio.channels.spi.AbstractSelector;
 import java.nio.channels.spi.SelectorProvider;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
@@ -639,6 +641,27 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
     }
 
+    /**
+     * SelectionKey 取消逻辑
+     * <p>
+     *      设置{@link AbstractSelectionKey#valid}为false
+     *      <p>
+     *      {@link AbstractSelectionKey#cancel()} 触发 ((AbstractSelector)selector()).cancel(this);
+     *      <p>
+     *      {@link AbstractSelector#cancel(java.nio.channels.SelectionKey)} Selector的cancelledKeys.add(k);
+     *      <p>
+     *
+     * needsToSelectAgain = true时调用{@link SelectorImpl#selectNow()}selector.selectNow()清除无效的key
+     * <p>
+     * 具体的清除逻辑如下：
+     * <p>
+     * {@link sun.nio.ch.WindowsSelectorImpl#doSelect}
+     * <p>
+     * {@link sun.nio.ch.SelectorImpl#processDeregisterQueue} 处理this.cancelledKeys()，每个key执行以下方法
+     * <p>
+     * {@link sun.nio.ch.WindowsSelectorImpl#implDereg} implDereg方法首选判断反注册的key是不是在通道key尾部，不在交换，
+     *      并将交换信息更新到pollWrapper，从fdMap，keys，selectedKeys集合移除选择key，并将key从通道Channel中移除。
+     */
     void cancel(SelectionKey key) {
         key.cancel();
         cancelledKeys ++;
@@ -903,6 +926,11 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     int selectNow() throws IOException {
         try {
             // 直接委托个Nio事件循环选择器
+            /**
+             * select方法的3中操作形式，实际上委托给为lockAndDoSelect方法，方法实际上是同步的，
+             * 可安全访问，获取key集合代理publicKeys和就绪key代理集合publicSelectedKeys，然后交给
+             * doSelect(long l)方法，这个方法为抽象方法，待子类扩展。
+             */
             return selector.selectNow();
         } finally {
             // restore wakeup state if needed

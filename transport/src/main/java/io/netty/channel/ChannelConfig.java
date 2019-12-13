@@ -105,8 +105,10 @@ public interface ChannelConfig {
      * Returns the connect timeout of the channel in milliseconds.  If the
      * {@link Channel} does not support connect operation, this property is not
      * used at all, and therefore will be ignored.
-     *
+     * <p></p>
+     * 返回通道的连接超时(以毫秒为单位)。如果{@link Channel}不支持connect操作，则根本不使用此属性，因此将被忽略。
      * @return the connect timeout in milliseconds.  {@code 0} if disabled.
+     *          连接超时(以毫秒为单位)。{@code 0}如果禁用
      */
     int getConnectTimeoutMillis();
 

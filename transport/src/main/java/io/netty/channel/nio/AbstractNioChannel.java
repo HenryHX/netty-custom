@@ -19,18 +19,13 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
-import io.netty.channel.AbstractChannel;
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelException;
-import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelFutureListener;
-import io.netty.channel.ChannelPromise;
-import io.netty.channel.ConnectTimeoutException;
-import io.netty.channel.EventLoop;
+import io.netty.channel.*;
+import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.ReferenceCounted;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
+import sun.nio.ch.SelectorImpl;
 
 import java.io.IOException;
 import java.net.SocketAddress;
@@ -40,6 +35,7 @@ import java.nio.channels.ConnectionPendingException;
 import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.spi.AbstractSelectionKey;
+import java.nio.channels.spi.AbstractSelector;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -215,6 +211,8 @@ public abstract class AbstractNioChannel extends AbstractChannel {
 
     /**
      * Special {@link Unsafe} sub-type which allows to access the underlying {@link SelectableChannel}
+     * <p></p>
+     * 特殊的{@link Unsafe}子类型，允许访问底层{@link SelectableChannel}
      */
     public interface NioUnsafe extends Unsafe {
         /**
@@ -272,6 +270,14 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                 }
 
                 boolean wasActive = isActive();
+                /**
+                 * {@link NioSocketChannel#doConnect(java.net.SocketAddress, java.net.SocketAddress)}中
+                 * boolean connected = javaChannel().connect(remoteAddress)此处就向服务端发起了connect请求，准备三次握手。
+                 * 由于是非阻塞模式，所以该方法会立即返回。如果建立连接成功，则返回true，否则返回false,后续需要使用select来检测连接是否已建立成功。
+                 * 如果返回false，此种情况就需要将ops设置为SelectionKey.OP_CONNECT，等待connect的select事件通知，然后调用finishConnect方法。
+                 *
+                 * 对于connect，会加一个超时调度任务，默认的超时时间是30s
+                 */
                 if (doConnect(remoteAddress, localAddress)) {
                     fulfillConnectPromise(promise, wasActive);
                 } else {
@@ -279,11 +285,20 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                     requestedRemoteAddress = remoteAddress;
 
                     // Schedule connect timeout.
+                    /**
+                     * 默认的超时时间是30s
+                     * {@link DefaultChannelConfig#connectTimeoutMillis}
+                     */
                     int connectTimeoutMillis = config().getConnectTimeoutMillis();
                     if (connectTimeoutMillis > 0) {
+                        // 如果设置了connect连接超时时间，则在eventLoop()中放置一个delay task，延时connectTimeoutMillis后执行
+                        //
                         connectTimeoutFuture = eventLoop().schedule(new Runnable() {
                             @Override
                             public void run() {
+                                /**
+                                 * 如果延迟时间范围内，连接成功，则调用{@link AbstractNioUnsafe#finishConnect()}将connectPromise设置为null，此时不会关闭channel，否则关闭
+                                 */
                                 ChannelPromise connectPromise = AbstractNioChannel.this.connectPromise;
                                 ConnectTimeoutException cause =
                                         new ConnectTimeoutException("connection timed out: " + remoteAddress);
@@ -294,7 +309,9 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                         }, connectTimeoutMillis, TimeUnit.MILLISECONDS);
                     }
 
+
                     promise.addListener(new ChannelFutureListener() {
+                        // future 和 promise是一个对象
                         @Override
                         public void operationComplete(ChannelFuture future) throws Exception {
                             if (future.isCancelled()) {
@@ -324,6 +341,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
             boolean active = isActive();
 
             // trySuccess() will return false if a user cancelled the connection attempt.
+            // 如果用户取消了连接尝试，trySuccess()将返回false。
             boolean promiseSet = promise.trySuccess();
 
             // Regardless if the connection attempt was cancelled, channelActive() event should be triggered,
@@ -333,6 +351,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
             }
 
             // If a user cancelled the connection attempt, close the channel, which is followed by channelInactive().
+            // 如果用户取消了连接尝试，那么关闭通道，后面跟着channelInactive()。
             if (!promiseSet) {
                 close(voidPromise());
             }
@@ -366,6 +385,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
             } finally {
                 // Check for null as the connectTimeoutFuture is only created if a connectTimeoutMillis > 0 is used
                 // See https://github.com/netty/netty/issues/1770
+                // 连接成功或失败后，取消connectTimeoutFuture定时调度任务
                 if (connectTimeoutFuture != null) {
                     connectTimeoutFuture.cancel(false);
                 }
@@ -431,7 +451,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                  * 什么情况下才抛出 CancelledKeyException 异常呢？
                  *
                  * 由于尚未调用select.select（..）操作，因此可能仍存在缓存而未删除的“已取消”的selectionkey，因此强制调用 selector.selectNow() 方法
-                 * 将已经取消的 selectionKey 从 selector 上删除。
+                 * 将已经取消的 selectionKey 从 selector {@link AbstractSelector#cancelledKeys}上删除。
                  *
                  * 只有第一次抛出此异常，才调用 selector.selectNow() 进行取消。 如果调用 selector.selectNow() 还有取消的缓存，可能是jdk的一个bug。
                  */
@@ -449,6 +469,28 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         }
     }
 
+
+    /**
+     * SelectionKey 取消逻辑
+     * <p>
+     *      设置{@link AbstractSelectionKey#valid}为false
+     *      <p>
+     *      {@link AbstractSelectionKey#cancel()} 触发 ((AbstractSelector)selector()).cancel(this);
+     *      <p>
+     *      {@link AbstractSelector#cancel(java.nio.channels.SelectionKey)} Selector的cancelledKeys.add(k);
+     *      <p>
+     *
+     * needsToSelectAgain = true时调用{@link SelectorImpl#selectNow()}selector.selectNow()清除无效的key
+     * <p>
+     * 具体的清除逻辑如下：
+     * <p>
+     * {@link sun.nio.ch.WindowsSelectorImpl#doSelect}
+     * <p>
+     * {@link sun.nio.ch.SelectorImpl#processDeregisterQueue} 处理this.cancelledKeys()，每个key执行以下方法
+     * <p>
+     * {@link sun.nio.ch.WindowsSelectorImpl#implDereg} implDereg方法首选判断反注册的key是不是在通道key尾部，不在交换，
+     *      并将交换信息更新到pollWrapper，从fdMap，keys，selectedKeys集合移除选择key，并将key从通道Channel中移除。
+     */
     @Override
     protected void doDeregister() throws Exception {
         eventLoop().cancel(selectionKey());
