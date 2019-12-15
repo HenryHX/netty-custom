@@ -33,6 +33,9 @@ public final class ChannelMetadata {
      * @param hasDisconnect     {@code true} if and only if the channel has the {@code disconnect()} operation
      *                          that allows a user to disconnect and then call {@link Channel#connect(SocketAddress)}
      *                          again, such as UDP/IP.
+     *                          <p>
+     *                          {@code true}  当且仅当通道具有{@code disconnect()}操作，该操作允许用户断开连接，
+     *                                      然后再次调用{@link Channel#connect(SocketAddress)}，例如UDP/IP。
      */
     public ChannelMetadata(boolean hasDisconnect) {
         this(hasDisconnect, 1);
@@ -46,6 +49,8 @@ public final class ChannelMetadata {
      *                          again, such as UDP/IP.
      * @param defaultMaxMessagesPerRead If a {@link MaxMessagesRecvByteBufAllocator} is in use, then this value will be
      * set for {@link MaxMessagesRecvByteBufAllocator#maxMessagesPerRead()}. Must be {@code > 0}.
+     *                                  如果使用了{@link MaxMessagesRecvByteBufAllocator}，
+     *                                  则将为{@link MaxMessagesRecvByteBufAllocator#maxMessagesPerRead()}设置此值。必须是{@code > 0}。
      */
     public ChannelMetadata(boolean hasDisconnect, int defaultMaxMessagesPerRead) {
         checkPositive(defaultMaxMessagesPerRead, "defaultMaxMessagesPerRead");

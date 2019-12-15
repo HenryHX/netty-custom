@@ -46,6 +46,9 @@ import static io.netty.util.internal.ObjectUtil.checkNotNull;
  * constructor explicitly.
  * <p></p>
  * 允许将多个ByteBuf的实例组装到一起，形成一个统一的视图。
+ * <p>
+ * 一个虚拟缓冲区，它将多个缓冲区显示为一个合并的缓冲区。
+ * 建议使用{@link ByteBufAllocator#compositeBuffer()}或{@link Unpooled#wrappedBuffer(ByteBuf…)}而不是显式地调用构造函数。
  */
 public class CompositeByteBuf extends AbstractReferenceCountedByteBuf implements Iterable<ByteBuf> {
 

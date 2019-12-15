@@ -41,29 +41,39 @@ import static io.netty.util.internal.ObjectUtil.checkPositiveOrZero;
 
 /**
  * The default {@link ChannelConfig} implementation.
+ * <p>
+ * 默认通道配置内部关联一个通道，一个消息大小估算器，默认为DefaultMessageSizeEstimator，尝试写自旋次数默认为16，
+ * 写操作失败，默认自动关闭通道，连接超时默认为30000ms，同时拥有一个字节buf 分配器和一个接收字节buf 分配器。
+ * DefaultChannelConfig构造函数，主要是初始化配置关联通道和接收字节buf分配器。
  */
 public class DefaultChannelConfig implements ChannelConfig {
+    // 消息大小估计器
     private static final MessageSizeEstimator DEFAULT_MSG_SIZE_ESTIMATOR = DefaultMessageSizeEstimator.DEFAULT;
-
+    // 默认连接超时时间
     private static final int DEFAULT_CONNECT_TIMEOUT = 30000;
 
+    // 通道是否自动读取属性
     private static final AtomicIntegerFieldUpdater<DefaultChannelConfig> AUTOREAD_UPDATER =
             AtomicIntegerFieldUpdater.newUpdater(DefaultChannelConfig.class, "autoRead");
+    // 通道写buf掩码
     private static final AtomicReferenceFieldUpdater<DefaultChannelConfig, WriteBufferWaterMark> WATERMARK_UPDATER =
             AtomicReferenceFieldUpdater.newUpdater(
                     DefaultChannelConfig.class, WriteBufferWaterMark.class, "writeBufferWaterMark");
 
-    protected final Channel channel;
+    protected final Channel channel;// 关联通道
 
+    // 字节buf分配器
     private volatile ByteBufAllocator allocator = ByteBufAllocator.DEFAULT;
+    // 接收字节buf分配器
     private volatile RecvByteBufAllocator rcvBufAllocator;
+    // 消息大小估计器
     private volatile MessageSizeEstimator msgSizeEstimator = DEFAULT_MSG_SIZE_ESTIMATOR;
-
+    // 连接超时时间
     private volatile int connectTimeoutMillis = DEFAULT_CONNECT_TIMEOUT;
-    private volatile int writeSpinCount = 16;
+    private volatile int writeSpinCount = 16;// 尝试写自旋次数
     @SuppressWarnings("FieldMayBeFinal")
-    private volatile int autoRead = 1;
-    private volatile boolean autoClose = true;
+    private volatile int autoRead = 1;// 是否自动读取
+    private volatile boolean autoClose = true;// 写操作失败，是否自动关闭通道
     private volatile WriteBufferWaterMark writeBufferWaterMark = WriteBufferWaterMark.DEFAULT;
     private volatile boolean pinEventExecutor = true;
 

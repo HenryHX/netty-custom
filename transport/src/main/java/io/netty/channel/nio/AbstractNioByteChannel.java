@@ -17,14 +17,7 @@ package io.netty.channel.nio;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelConfig;
-import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelMetadata;
-import io.netty.channel.ChannelOutboundBuffer;
-import io.netty.channel.ChannelPipeline;
-import io.netty.channel.FileRegion;
-import io.netty.channel.RecvByteBufAllocator;
+import io.netty.channel.*;
 import io.netty.channel.internal.ChannelUtils;
 import io.netty.channel.socket.ChannelInputShutdownEvent;
 import io.netty.channel.socket.ChannelInputShutdownReadComplete;
@@ -130,6 +123,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
 
         @Override
         public final void read() {
+            // 获取到 Channel 的 config 对象，并从该对象中获取内存分配器ByteBufAllocator，还有计算内存分配器RecvByteBufAllocator.Handle
             final ChannelConfig config = config();
             if (shouldBreakReadReady(config)) {
                 clearReadPending();
@@ -137,19 +131,38 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             }
             final ChannelPipeline pipeline = pipeline();
             final ByteBufAllocator allocator = config.getAllocator();
+            // 返回AdaptiveRecvByteBufAllocator.HandleImpl实例，每个Netty Channel只会有一个HandleImpl实例，
+            // 第一次调用此方法时初始化，后面直接使用，调用reset方法进行统计值复位。
             final RecvByteBufAllocator.Handle allocHandle = recvBufAllocHandle();
             allocHandle.reset(config);
 
             ByteBuf byteBuf = null;
             boolean close = false;
+            /**
+             * 进入一个循环，循环体的作用是：使用内存分配器获取数据容器ByteBuf，调用 doReadBytes 方法将数据读取到容器中，
+             * 如果这次读取什么都没有或远程连接关闭，则跳出循环。还有，如果满足了跳出推荐，也要结束循环，不能无限循环，默认16 次，
+             * 默认参数来自 AbstractNioByteChannel 的 属性 ChannelMetadata 类型的 METADATA 实例。
+             *
+             * 每读取一次就调用 pipeline 的 channelRead 方法，为什么呢？
+             *
+             * 因为由于 TCP 传输如果包过大的话，丢失的风险会更大，导致重传，所以，大的数据流会分成多次传输。而 channelRead 方法也会被调用多次，
+             * 因此，使用 channelRead 方法的时候需要注意，如果数据量大，最好将数据放入到缓存中，读取完毕后，再进行处理。
+             */
             try {
                 do {
+                    // 根据预测的值或者初始值（第一次分配时）进行缓冲区分配
                     byteBuf = allocHandle.allocate(allocator);
+                    // 读取socketChannel数据到分配的byteBuf,对写入的大小进行一个累计叠加
+                    /**
+                     * 记录本次循环迭代读取的字节数，有可能会触发{@link AdaptiveRecvByteBufAllocator.HandleImpl#record(int)}方法进行扩大或缩小预测值
+                     * 详见下面的{@link AdaptiveRecvByteBufAllocator.HandleImpl#lastBytesRead(int)}方法
+                     */
                     allocHandle.lastBytesRead(doReadBytes(byteBuf));
                     if (allocHandle.lastBytesRead() <= 0) {
                         // nothing was read. release the buffer.
                         byteBuf.release();
                         byteBuf = null;
+                        // 如果此次读取没有读到任何数据，则关闭
                         close = allocHandle.lastBytesRead() < 0;
                         if (close) {
                             // There is nothing left to read as we received an EOF.
@@ -158,13 +171,22 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                         break;
                     }
 
+                    // 累加读取次数
                     allocHandle.incMessagesRead(1);
                     readPending = false;
+                    // 触发pipeline的ChannelRead事件来对byteBuf进行后续处理
                     pipeline.fireChannelRead(byteBuf);
                     byteBuf = null;
+                    /**
+                     * 下面判断是否继续读取，从上面的介绍可知，while循环最多只会迭代16次，
+                     * 详见HandleImpl父类MaxMessageHandle.continueReading方法{@link }
+                     */
                 } while (allocHandle.continueReading());
 
+                // 记录总共读取的大小
+                // 跳出循环后，调用 allocHandle 的 readComplete 方法，表示读取已完成，并记录读取记录，用于下次分配合理内存。
                 allocHandle.readComplete();
+                // 调用 pipeline 的fireChannelReadComplete方法。
                 pipeline.fireChannelReadComplete();
 
                 if (close) {

@@ -58,15 +58,21 @@ public interface RecvByteBufAllocator {
          * Reset any counters that have accumulated and recommend how many messages/bytes should be read for the next
          * read loop.
          * <p>
+         * 重置所有累积的计数器，并建议为下一个读循环应该读取多少消息/字节。
+         * <p>
          * This may be used by {@link #continueReading()} to determine if the read operation should complete.
+         * <p>
+         * {@link #continueReading()}可以使用它来确定是否应该完成读取操作。
          * </p>
          * This is only ever a hint and may be ignored by the implementation.
+         * 这只是一个提示，可能会被实现忽略。
          * @param config The channel configuration which may impact this object's behavior.
          */
         void reset(ChannelConfig config);
 
         /**
          * Increment the number of messages that have been read for the current read loop.
+         * 为当前读循环增加已读取的消息数量。
          * @param numMessages The amount to increment by.
          */
         void incMessagesRead(int numMessages);
@@ -74,10 +80,14 @@ public interface RecvByteBufAllocator {
         /**
          * Set the bytes that have been read for the last read operation.
          * This may be used to increment the number of bytes that have been read.
+         * <p>为最后一次读取操作设置已读取的字节数。这可以用来增加已读取的字节数。</p>
          * @param bytes The number of bytes from the previous read operation. This may be negative if an read error
          * occurs. If a negative value is seen it is expected to be return on the next call to
          * {@link #lastBytesRead()}. A negative value will signal a termination condition enforced externally
          * to this class and is not required to be enforced in {@link #continueReading()}.
+         *              <p></p>
+         *              前一个读操作的字节数。如果发生读取错误，则为负。如果看到一个负值，那么它将在下一次调用{@link #lastBytesRead()}时返回。
+         *              如果为负值，则表示此类外部强制执行的终止条件，且不需要在{@link #continueReading()}中强制执行。
          */
         void lastBytesRead(int bytes);
 
@@ -89,6 +99,7 @@ public interface RecvByteBufAllocator {
 
         /**
          * Set how many bytes the read operation will (or did) attempt to read.
+         * 设置读操作尝试读取的字节数
          * @param bytes How many bytes the read operation will (or did) attempt to read.
          */
         void attemptedBytesRead(int bytes);
@@ -125,6 +136,7 @@ public interface RecvByteBufAllocator {
 
     /**
      * A {@link Handle} which delegates all call to some other {@link Handle}.
+     * <p>一个{@link Handle}将所有调用委托给其他{@link Handle}。</p>
      */
     class DelegatingHandle implements Handle {
         private final Handle delegate;

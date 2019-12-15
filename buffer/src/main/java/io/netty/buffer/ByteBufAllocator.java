@@ -18,6 +18,16 @@ package io.netty.buffer;
 /**
  * Implementations are responsible to allocate buffers. Implementations of this interface are expected to be
  * thread-safe.
+ * <p>实现负责分配缓冲区。这个接口的实现应该是线程安全的。</p>
+ * <p></p>
+ * 前面几个方法buffer和ioBuffer就是分配buffer或者ioBuffer，至于分配什么buffer，direct的还是heap的，由具体实现决定。
+ *
+ * 后面就有heapBuffer和directBuffer就是分配堆内内存和堆外内存了，既然如此，为什么还要上面的buffer方法？
+ * 看到后面的AbstractByteBufAllocator就真相大白，其实先调用buffer方法，再在这个方法里面地调用heapBufffer和directBuffer。
+ *
+ * ps:这里我们先留意一下，netty如何区分heapBuffer还是directBuffer，就是通过这里区分的。
+ *
+ * 最后的compositeBuffer那就是分配堆内内存和堆外内存都有的buffer了
  */
 public interface ByteBufAllocator {
 
@@ -44,6 +54,7 @@ public interface ByteBufAllocator {
 
     /**
      * Allocate a {@link ByteBuf}, preferably a direct buffer which is suitable for I/O.
+     * <p>分配一个{@link ByteBuf}，最好是一个适合I/O的直接缓冲区。</p>
      */
     ByteBuf ioBuffer();
 

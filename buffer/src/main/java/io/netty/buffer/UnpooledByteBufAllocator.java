@@ -54,6 +54,9 @@ public final class UnpooledByteBufAllocator extends AbstractByteBufAllocator imp
      * @param disableLeakDetector {@code true} if the leak-detection should be disabled completely for this
      *                            allocator. This can be useful if the user just want to depend on the GC to handle
      *                            direct buffers when not explicit released.
+     *                                        <p>
+     *                            如果应该完全禁用这个分配器的泄漏检测，则为{@code true}。
+     *                                        如果用户只是希望在未显式释放时依赖GC来处理直接缓冲区，那么这将非常有用。
      */
     public UnpooledByteBufAllocator(boolean preferDirect, boolean disableLeakDetector) {
         this(preferDirect, disableLeakDetector, PlatformDependent.useDirectBufferNoCleaner());
@@ -69,6 +72,8 @@ public final class UnpooledByteBufAllocator extends AbstractByteBufAllocator imp
      *                            direct buffers when not explicit released.
      * @param tryNoCleaner {@code true} if we should try to use {@link PlatformDependent#allocateDirectNoCleaner(int)}
      *                            to allocate direct memory.
+     *                                 <p>
+     *                     如果我们尝试使用{@link PlatformDependent#allocateDirectNoCleaner(int)}来分配直接内存，则为{@code true}。
      */
     public UnpooledByteBufAllocator(boolean preferDirect, boolean disableLeakDetector, boolean tryNoCleaner) {
         super(preferDirect);
@@ -77,6 +82,11 @@ public final class UnpooledByteBufAllocator extends AbstractByteBufAllocator imp
                 && PlatformDependent.hasDirectBufferNoCleanerConstructor();
     }
 
+    /**
+     * heap数据都是存放在byte数组里面的，而且UnpooledUnsafeHeapByteBuf的父类是UnpooledHeapByteBuf
+     * (而且我们可以知道UnpooledUnsafeHeapByteBuf是直接调用父类UnpooledHeapByteBuf的方法创建的，
+     * UnpooledUnsafeHeapByteBuf创建的时候相当于创建了一个UnpooledHeapByteBuf)
+     */
     @Override
     protected ByteBuf newHeapBuffer(int initialCapacity, int maxCapacity) {
         return PlatformDependent.hasUnsafe() ?

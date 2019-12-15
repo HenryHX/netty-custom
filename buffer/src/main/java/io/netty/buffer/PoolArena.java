@@ -34,6 +34,18 @@ import static java.lang.Math.max;
  * 不需要重复频繁地进行内存操作，那一大块连续的内存就叫做memory Arena，而PoolArena是Netty的内存池实现类。
  * <p></p>
  * PoolArena是由多个Chunk组成的，而每个Chunk则由多个Page组成。PoolArena是由Chunk和Page共同组织和管理的。
+ * <p></p>
+ * PoolArena通过6个PoolChunkList来管理PoolChunk，而每个PoolChunk由N个PoolSubpage构成，
+ * 即将PoolChunk的里面底层实现 T memory分成N段，每段就是一个PoolSubpage。
+ * 当用户申请一个Buf时，使用Arena所拥有的chunk所管辖的page分配内存，内存分配的落地点为 T memory上。
+ * <p></p>
+ * 看一个例子
+ * 假设每个Page的大小为8192。使用allocator.heapBuffer申请两块buf。
+ * ByteBuf byteBuf = allocator.heapBuffer(15);
+ * ByteBuf byteBuf1 = allocator.heapBuffer(17);
+ * 所得到的结果就是：
+ * byteBuf将利用PoolChunk的第0个PoolSubpage进行分配，分配的buf的内存为：从memory[0]开始且长度为15最大长度为16；
+ * byteBuf1将利用PoolChunk的第1个PoolSubpage进行分配，分配的落地点从memory[8192]开始且长度为17最大长度为32的内存.
  */
 abstract class PoolArena<T> implements PoolArenaMetric {
     static final boolean HAS_UNSAFE = PlatformDependent.hasUnsafe();
@@ -59,12 +71,12 @@ abstract class PoolArena<T> implements PoolArenaMetric {
     private final PoolSubpage<T>[] tinySubpagePools;
     private final PoolSubpage<T>[] smallSubpagePools;
 
-    private final PoolChunkList<T> q050;
-    private final PoolChunkList<T> q025;
-    private final PoolChunkList<T> q000;
-    private final PoolChunkList<T> qInit;
-    private final PoolChunkList<T> q075;
-    private final PoolChunkList<T> q100;
+    private final PoolChunkList<T> q050; // 存储剩余内存50-100%个chunk
+    private final PoolChunkList<T> q025; // 存储剩余内存25-75%的chunk
+    private final PoolChunkList<T> q000; // 存储剩余内存1-50%的chunk
+    private final PoolChunkList<T> qInit; // 存储剩余内存0-25%的chunk
+    private final PoolChunkList<T> q075; // 存储剩余内存75-100%个chunk
+    private final PoolChunkList<T> q100; // 存储剩余内存100%chunk
 
     private final List<PoolChunkListMetric> chunkListMetrics;
 
