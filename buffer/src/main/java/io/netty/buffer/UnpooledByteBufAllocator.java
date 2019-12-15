@@ -94,6 +94,14 @@ public final class UnpooledByteBufAllocator extends AbstractByteBufAllocator imp
                 new InstrumentedUnpooledHeapByteBuf(this, initialCapacity, maxCapacity);
     }
 
+    /**
+     * 通过ByteBuffer的allocateDirect方法实现缓存的申请。
+     * 最后根据 disableLeakDetector 属性判断释放进行自动内存回收（也就是当你忘记回收的时候，帮你回收），
+     * 原理这里简单的说一下，使用虚引用进行跟踪。 FastThreadLocal 的内存回收类似。
+     * 可以说，大部分工作都是 allocator 做的，allocHandle 的作用就是提供了如何分配一个合理的内存的策略。
+     * <p>
+     * noCleaner 策略。这是 Netty 的一个优化。针对默认的直接内存创建和销毁做了优化--------不使用 JDK 的 cleaner 策略。
+     */
     @Override
     protected ByteBuf newDirectBuffer(int initialCapacity, int maxCapacity) {
         final ByteBuf buf;

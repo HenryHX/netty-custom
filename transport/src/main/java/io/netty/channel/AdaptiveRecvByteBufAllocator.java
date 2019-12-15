@@ -126,7 +126,7 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
             this.minIndex = minIndex;
             this.maxIndex = maxIndex;
 
-            // 获取默认缓冲大小规范为SIZE_TABLE中数值对应的小标
+            // 获取默认缓冲大小规范为SIZE_TABLE中数值对应的小标, 初始为1024
             index = getSizeTableIndex(initial);
             nextReceiveBufferSize = SIZE_TABLE[index];
         }

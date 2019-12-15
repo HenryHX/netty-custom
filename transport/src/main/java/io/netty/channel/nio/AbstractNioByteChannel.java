@@ -34,6 +34,7 @@ import static io.netty.channel.internal.ChannelUtils.WRITE_STATUS_SNDBUF_FULL;
  * {@link AbstractNioChannel} base class for {@link Channel}s that operate on bytes.
  */
 public abstract class AbstractNioByteChannel extends AbstractNioChannel {
+    // 定义每次读循环最大的次数为16
     private static final ChannelMetadata METADATA = new ChannelMetadata(false, 16);
     private static final String EXPECTED_TYPES =
             " (expected: " + StringUtil.simpleClassName(ByteBuf.class) + ", " +
@@ -44,9 +45,12 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
         public void run() {
             // Calling flush0 directly to ensure we not try to flush messages that were added via write(...) in the
             // meantime.
+            // 直接调用flush0，以确保不会尝试同时刷新 通过write(…)添加的 消息。
             ((AbstractNioUnsafe) unsafe()).flush0();
         }
     };
+    // 通道关闭读取，又错误读取的错误的标识
+    // 若 inputClosedSeenErrorOnRead = true ，移除对 SelectionKey.OP_READ 事件的感兴趣。
     private boolean inputClosedSeenErrorOnRead;
 
     /**
@@ -61,6 +65,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
 
     /**
      * Shutdown the input side of the channel.
+     * 关闭通道的输入端。
      */
     protected abstract ChannelFuture shutdownInput();
 
@@ -82,6 +87,9 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
         return isInputShutdown0() && (inputClosedSeenErrorOnRead || !isAllowHalfClosure(config));
     }
 
+    /**
+     * 是否允许半封闭
+     */
     private static boolean isAllowHalfClosure(ChannelConfig config) {
         return config instanceof SocketChannelConfig &&
                 ((SocketChannelConfig) config).isAllowHalfClosure();
@@ -125,6 +133,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
         public final void read() {
             // 获取到 Channel 的 config 对象，并从该对象中获取内存分配器ByteBufAllocator，还有计算内存分配器RecvByteBufAllocator.Handle
             final ChannelConfig config = config();
+            // 若 inputClosedSeenErrorOnRead = true ，移除对 SelectionKey.OP_READ 事件的感兴趣。
             if (shouldBreakReadReady(config)) {
                 clearReadPending();
                 return;
