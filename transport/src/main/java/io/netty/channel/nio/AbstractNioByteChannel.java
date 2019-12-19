@@ -32,6 +32,7 @@ import static io.netty.channel.internal.ChannelUtils.WRITE_STATUS_SNDBUF_FULL;
 
 /**
  * {@link AbstractNioChannel} base class for {@link Channel}s that operate on bytes.
+ * AbstractNioByteChannel 类主要定义了写入消息的 doWrite() 方法
  */
 public abstract class AbstractNioByteChannel extends AbstractNioChannel {
     // 定义每次读循环最大的次数为16
@@ -40,6 +41,12 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             " (expected: " + StringUtil.simpleClassName(ByteBuf.class) + ", " +
             StringUtil.simpleClassName(FileRegion.class) + ')';
 
+    /**
+     * 负责刷新发送缓存链表中的数据
+     * <p>
+     * 该类定义了一个 flushTask 变量，来负责刷新发送已经 write 到缓存中的数据。
+     * write 的数据没有直接写到 socket 中，而是写入到 ChannelOutboundBuffer 缓存中，等 flush 的时候才会写到 Socket 中进行发送数据。
+     */
     private final Runnable flushTask = new Runnable() {
         @Override
         public void run() {
@@ -95,6 +102,9 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                 ((SocketChannelConfig) config).isAllowHalfClosure();
     }
 
+    /**
+     * NioByteUnsafe 类继承了 AbstractNioChannel 的内部类 AbstractNioUnsafe，并重写了读取数据的方法。
+     */
     protected class NioByteUnsafe extends AbstractNioUnsafe {
 
         private void closeOnRead(ChannelPipeline pipeline) {
@@ -129,6 +139,17 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             }
         }
 
+        /**
+         * 如果没有配置autoread，整个读取流程如下：
+         *
+         * <p>1、每次调用{@link io.netty.channel.DefaultChannelPipeline.HeadContext#read}手动读取socket数据时，
+         * <p>2、{@link io.netty.channel.AbstractChannel.AbstractUnsafe#beginRead}
+         * <p>3、{@link io.netty.channel.nio.AbstractNioChannel#doBeginRead}注册selectionKey.readInterestOp读事件，此时readPending = true
+         * <p>4、{@link io.netty.channel.nio.NioEventLoop#processSelectedKey(java.nio.channels.SelectionKey, io.netty.channel.nio.AbstractNioChannel)}会捕获读事件，
+         *      调用{@link io.netty.channel.nio.AbstractNioByteChannel.NioByteUnsafe#read}进行真实的数据读取
+         * <p>5、读操作完毕，且没有配置自动读，则从选择key兴趣集中移除读操作事件{@link AbstractNioUnsafe#removeReadOp()}
+         * <p>6、下一次读取过程回到步骤1
+         */
         @Override
         public final void read() {
             // 获取到 Channel 的 config 对象，并从该对象中获取内存分配器ByteBufAllocator，还有计算内存分配器RecvByteBufAllocator.Handle
@@ -142,6 +163,10 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             final ByteBufAllocator allocator = config.getAllocator();
             // 返回AdaptiveRecvByteBufAllocator.HandleImpl实例，每个Netty Channel只会有一个HandleImpl实例，
             // 第一次调用此方法时初始化，后面直接使用，调用reset方法进行统计值复位。
+            /**
+             * defaultMaxMessagesPerRead被设置为16，具体设置流程可参考：
+             * {@link DefaultMaxMessagesRecvByteBufAllocator.MaxMessageHandle#continueReading(io.netty.util.UncheckedBooleanSupplier)}
+             */
             final RecvByteBufAllocator.Handle allocHandle = recvBufAllocHandle();
             allocHandle.reset(config);
 
@@ -159,7 +184,10 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
              */
             try {
                 do {
-                    // 根据预测的值或者初始值（第一次分配时）进行缓冲区分配
+                    /**
+                     * 根据预测的值或者初始值（第一次分配时）进行缓冲区分配，初始为1024，
+                     * {@link AdaptiveRecvByteBufAllocator.HandleImpl#HandleImpl(int, int, int)}######nextReceiveBufferSize
+                     */
                     byteBuf = allocHandle.allocate(allocator);
                     // 读取socketChannel数据到分配的byteBuf,对写入的大小进行一个累计叠加
                     /**
@@ -211,6 +239,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                 //
                 // See https://github.com/netty/netty/issues/2254
                 if (!readPending && !config.isAutoRead()) {
+                    // 读操作完毕，且没有配置自动读，则从选择key兴趣集中移除读操作事件
                     removeReadOp();
                 }
             }
@@ -240,17 +269,32 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
         return doWriteInternal(in, in.current());
     }
 
+    /**
+     * @return 该方法的返回值
+     * <p>
+     * 1、如果从 ChannelOutboundBuffer 中获取的消息不可读，返回0，不计入循环发送的次数
+     * <p>
+     * 2、如果调用 doWriteBytes 发送消息，只要发送的消息字节数大于0，就计入一次循环发送次数
+     * <p>
+     * 3、如果调用 doWriteBytes 发送消息，发送的字节数为0，则返回一个WRITE_STATUS_SNDBUF_FULL = Integer.MAX_VALUE值。
+     */
     private int doWriteInternal(ChannelOutboundBuffer in, Object msg) throws Exception {
+        // 发送消息可以支持两种类型 ByteBuf 和 FileRegion。这里只分析 ByteBuf。FileRegion 和 ByteBuf 发送类似。
         if (msg instanceof ByteBuf) {
             ByteBuf buf = (ByteBuf) msg;
+            // 1、首先判断 buf 是否可读，如果不可读，说明该消息不可用，直接丢弃，并且在 ChannelOutboundBuffer 的缓存链表中删除该消息 。
+            //      然后在 doWrite 继续循环发送下一条消息。
             if (!buf.isReadable()) {
                 in.remove();
                 return 0;
             }
 
+            // 2、如果 buf 可读，则调用 doWriteBytes() 方法发送消息，直接写到 Socket 中发送出去，并且返回发送的字节数。
             final int localFlushedAmount = doWriteBytes(buf);
+            // 3、如果发送的字节数大于0，则调用 in.progress() 更新消息发送的进度。
             if (localFlushedAmount > 0) {
                 in.progress(localFlushedAmount);
+                // 4、判断当前的 buf 中的数据是否已经全部发送完成，如果完成则从 ChannelOutboundBuffer 缓存链表中删除该消息。
                 if (!buf.isReadable()) {
                     in.remove();
                 }
@@ -275,23 +319,39 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             // Should not reach here.
             throw new Error();
         }
+        // 一般只有当前 Socket 缓冲区写满了，无法再继续发送数据的时候才会返回0（Socket 的Buffer已满）。
+        // 如果继续循环发送也还是无法写入的，这时返回一个比较大值，会直接退出循环发送的，稍后再尝试写入。
         return WRITE_STATUS_SNDBUF_FULL;
     }
 
     @Override
     protected void doWrite(ChannelOutboundBuffer in) throws Exception {
+        // 首先获取循环发送的次数，默认为16次 private volatile int writeSpinCount = 16。
+        // 当一次没有完成该消息的发送的时候（写半包），会继续循环发送。
+        // 设置发送循环的最大次数原因是当循环发送的时候，I/O 线程会一直尝试进行写操作，
+        // 此时I/O 线程无法处理其他的 I/O 操作，比如发送消息，而客户端接收数据比较慢，这时会一直不停的尝试给客户端发送数据。
         int writeSpinCount = config().getWriteSpinCount();
         do {
+            // 从 ChannelOutboundBuffer 中获取待写入到 Socket 中的消息。
+            // Netty 写数据的时候首先是把数据写入到 ChannelOutboundBuffer 缓存中。使用的链表保存写入的消息数据。
+            // 当调用 flush 的时候会从 ChannelOutboundBuffer 缓存中获取数据写入到 Socket 中发送出去。
+
+            // 获取写缓存链表中第一条要写入的数据
             Object msg = in.current();
+            // 当获取消息为空，说明所有数据都已经发送出去。然后调用 clearOpWrite()，取消该 Channel 注册在 Selector 上的 OP_WRITE 事件。
             if (msg == null) {
                 // Wrote all messages.
                 clearOpWrite();
                 // Directly return here so incompleteWrite(...) is not called.
                 return;
             }
+            // 写入消息
             writeSpinCount -= doWriteInternal(in, msg);
         } while (writeSpinCount > 0);
 
+        // 判断消息是否写入完成，然后做相关的操作。
+        //      如果未发送完成则在 selector 上注册 OP_WRITE 事件。
+        //      如果发送完成则在 selector 上取消 OP_WRITE 事件。
         incompleteWrite(writeSpinCount < 0);
     }
 
@@ -321,6 +381,13 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
 
     protected final void incompleteWrite(boolean setOpWrite) {
         // Did not write completely.
+        /**
+         * boolean setOpWrite = writeSpinCount < 0； writeSpinCount 什么时候才会出现小于0 呢？
+         * 上面已经分析过，如果调用{@link AbstractNioByteChannel#doWriteInternal(io.netty.channel.ChannelOutboundBuffer, java.lang.Object)}
+         * 内doWriteBytes方法发送消息，发送的字节数为0，则返回一个 WRITE_STATUS_SNDBUF_FULL = Integer.MAX_VALUE 值。
+         * 此时Socket 的 Buffer 已经写满，无法再继续发送数据。
+         * 这说明该消息还未写完，然后调用 setOpWrite() 方法，在 Selector 上注册写标识。
+         */
         if (setOpWrite) {
             setOpWrite();
         } else {
@@ -328,6 +395,8 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             // use our write quantum. In this case we no longer want to set the write OP because the socket is still
             // writable (as far as we know). We will find out next time we attempt to write if the socket is writable
             // and set the write OP if necessary.
+
+            // 如果写完，则清除 Selector 上注册的写标识。稍后再刷新计划，以便同时处理其他任务。
             clearOpWrite();
 
             // Schedule flush again later so other tasks can be picked up in the meantime
@@ -350,8 +419,9 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
 
     /**
      * Write bytes form the given {@link ByteBuf} to the underlying {@link java.nio.channels.Channel}.
+     * <p>将给定的{@link ByteBuf}字节写到底层{@link java.nio.channels.Channel}。</p>
      * @param buf           the {@link ByteBuf} from which the bytes should be written
-     * @return amount       the amount of written bytes
+     * @return amount       the amount of written bytes 返回发送的字节数。
      */
     protected abstract int doWriteBytes(ByteBuf buf) throws Exception;
 

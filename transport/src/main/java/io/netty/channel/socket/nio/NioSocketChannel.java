@@ -63,6 +63,9 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
             /**
              *  Use the {@link SelectorProvider} to open {@link SocketChannel} and so remove condition in
              *  {@link SelectorProvider#provider()} which is called by each SocketChannel.open() otherwise.
+             *  <p>
+             *  使用{@link SelectorProvider}打开{@link SocketChannel}，从而删除{@link SelectorProvider#provider()}中的条件，
+             *  否则每个SocketChannel.open()将调用该条件。
              *
              *  See <a href="https://github.com/netty/netty/issues/2308">#2308</a>.
              */
@@ -106,6 +109,10 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
         config = new NioSocketChannelConfig(this, socket.socket());
     }
 
+    /**
+     * NioSocketChannel.parent() 是 NioServerSocketChannel。
+     * NioServerSocketChannel.parent() 为 null。
+     */
     @Override
     public ServerSocketChannel parent() {
         return (ServerSocketChannel) super.parent();
@@ -121,33 +128,53 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
         return (SocketChannel) super.javaChannel();
     }
 
+    /**
+     * 查看 SocketChannel 是否是open，并且是已经连接状态。
+     */
     @Override
     public boolean isActive() {
         SocketChannel ch = javaChannel();
         return ch.isOpen() && ch.isConnected();
     }
 
+    /**
+     * 查看 SocketChannel 写是否关闭。
+     * 调用 {@link NioSocketChannel#doShutdownOutput()} 可以关闭写操作。
+     */
     @Override
     public boolean isOutputShutdown() {
         return javaChannel().socket().isOutputShutdown() || !isActive();
     }
 
+    /**
+     * 查看 SocketChannel 读是否关闭。
+     * 调用 {@link NioSocketChannel#shutdownInput()} 可以关闭读操作。
+     */
     @Override
     public boolean isInputShutdown() {
         return javaChannel().socket().isInputShutdown() || !isActive();
     }
 
+    /**
+     * 判断SocketChannel 是否是Shutdown 状态：true- 如果 SocketChannel 不支持读写 或者不是打开和连接状态,
+     */
     @Override
     public boolean isShutdown() {
         Socket socket = javaChannel().socket();
         return socket.isInputShutdown() && socket.isOutputShutdown() || !isActive();
     }
 
+    /**
+     * 调用{@link NioSocketChannel#localAddress0()}
+     */
     @Override
     public InetSocketAddress localAddress() {
         return (InetSocketAddress) super.localAddress();
     }
 
+    /**
+     * 调用{@link NioSocketChannel#remoteAddress0()}
+     */
     @Override
     public InetSocketAddress remoteAddress() {
         return (InetSocketAddress) super.remoteAddress();
@@ -211,6 +238,12 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
         return promise;
     }
 
+    /**
+     * 1、shutdownOutput()
+     * 2、shutdownInput()
+     * 3、1和2有一个发生error，则promise失败
+     * @return
+     */
     @Override
     public ChannelFuture shutdown() {
         return shutdown(newPromise());
@@ -304,6 +337,17 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
         }
     }
 
+    /**
+     * 客户端向服务端发起连接操作。
+     * 1、首先绑定 本地IP
+     * 2、然后发起连接，返回连接的结果true、false。
+     * 3、如果未连接成功，则向 Selector 上注册 OP_CONNECT 事件。
+     * <p></p>
+     * 连接结果有 3 种可能
+     * 1、连接成功，返回true
+     * 2、连接未成功，返回false，表示已经发送连接请求还未收到连接成功的状态。
+     * 3、连接网络异常，在 finally 中关闭该连接。
+     */
     @Override
     protected boolean doConnect(SocketAddress remoteAddress, SocketAddress localAddress) throws Exception {
         if (localAddress != null) {
@@ -337,6 +381,10 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
         doClose();
     }
 
+    /**
+     * 关闭 SocketChannel 连接。
+     * @throws Exception
+     */
     @Override
     protected void doClose() throws Exception {
         super.doClose();
@@ -356,6 +404,10 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
         return buf.readBytes(javaChannel(), expectedWrittenBytes);
     }
 
+    /**
+     * FileRegion 是使用 FileChannel.transferTo() 直接写 Socket的，使用的零拷贝。
+     * @param region        the {@link FileRegion} from which the bytes should be written
+     */
     @Override
     protected long doWriteFileRegion(FileRegion region) throws Exception {
         final long position = region.transferred();
@@ -457,6 +509,15 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
                      */
                     // 获取本次循环总共需要写出的数据的字节总数
                     long attemptedBytes = in.nioBufferSize();
+                    /**
+                     * NIO 知识点 Gather 和 Scatter
+                     *
+                     * 聚集（gather）写入Channel是指在写操作时将多个buffer的数据写入同一个Channel，因此，
+                     *      Channel 将多个Buffer中的数据“聚集（gather）”后发送到Channel。
+                     *
+                     * 分散（scatter）从Channel中读取是指在读操作时将读取的数据写入多个buffer中。
+                     *      因此，Channel将从Channel中读取的数据“分散（scatter）”到多个Buffer中。
+                     */
                     final long localWrittenBytes = ch.write(nioBuffers, 0, nioBufferCnt);
                     if (localWrittenBytes <= 0) {
                         incompleteWrite(true);
@@ -515,6 +576,11 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
         }
     }
 
+    /**
+     * NioSocketChannelConfig 是 NioSocketChannel 的配置类。
+     * 1、设置 Socket 参数
+     * 2、设置gather 最大写入数据
+     */
     private final class NioSocketChannelConfig extends DefaultSocketChannelConfig {
         private volatile int maxBytesPerGatheringWrite = Integer.MAX_VALUE;
         private NioSocketChannelConfig(NioSocketChannel channel, Socket javaSocket) {
@@ -568,6 +634,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
 
         private void calculateMaxBytesPerGatheringWrite() {
             // Multiply by 2 to give some extra space in case the OS can process write data faster than we can provide.
+            // 乘以2以留出一些额外的空间，以防操作系统处理写数据的速度比我们提供的要快。
             int newSendBufferSize = getSendBufferSize() << 1;
             if (newSendBufferSize > 0) {
                 setMaxBytesPerGatheringWrite(newSendBufferSize);

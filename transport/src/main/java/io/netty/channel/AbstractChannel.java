@@ -694,7 +694,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
         /**
          * close实现的代码虽然比较多，但做的事情比较简单:首先执行close操作，然后实现deregister操作，触发channelInactive事件。
-         *
+         * <p></p>
          * 在close的实现中，先调用assertEventLoop方法确保当前方法是在eventLoop中执行，然后多次使用invokeLater方法把一系列操作放在放在Runnable中执行，
          * 这样做的目的是为了保证接下来的操作一定在当前操作完成之后才会执行，这一点是有eventLoop来保证的，
          * eventLoop执行Runnable的顺序和调用execute的顺序一致，相关实现参考eventLoop。
