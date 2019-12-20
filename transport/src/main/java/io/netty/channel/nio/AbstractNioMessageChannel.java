@@ -15,12 +15,8 @@
  */
 package io.netty.channel.nio;
 
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelConfig;
-import io.netty.channel.ChannelOutboundBuffer;
-import io.netty.channel.ChannelPipeline;
-import io.netty.channel.RecvByteBufAllocator;
-import io.netty.channel.ServerChannel;
+import io.netty.channel.*;
+import io.netty.channel.socket.nio.NioServerSocketChannel;
 
 import java.io.IOException;
 import java.net.PortUnreachableException;
@@ -57,6 +53,9 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
 
     private final class NioMessageUnsafe extends AbstractNioUnsafe {
 
+        /**
+         * 存放accept的SocketChannel
+         */
         private final List<Object> readBuf = new ArrayList<Object>();
 
         @Override
@@ -72,6 +71,9 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
             try {
                 try {
                     do {
+                        /**
+                         * {@link NioServerSocketChannel#doReadMessages(java.util.List)}
+                         */
                         int localRead = doReadMessages(readBuf);
                         if (localRead == 0) {
                             break;
@@ -116,12 +118,25 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
                 //
                 // See https://github.com/netty/netty/issues/2254
                 if (!readPending && !config.isAutoRead()) {
+                    // 读操作完毕，且没有配置自动读，则从选择key兴趣集中移除读操作事件
+                    /**
+                     * autoRead == 1 默认值为true，所以不会每次read完成后不会移除读事件，
+                     * 当有消息来的时候，不需要手动调用{@link DefaultChannelPipeline#read()}
+                     */
+
                     removeReadOp();
                 }
             }
         }
     }
 
+    /**
+     * 写消息的流程：
+     * {@link NioEventLoop#processSelectedKey(java.nio.channels.SelectionKey, io.netty.channel.nio.AbstractNioChannel)}  =====》
+     * {@link AbstractNioUnsafe#forceFlush()}  =====》
+     * {@link AbstractUnsafe#flush0()}  =====》
+     * 本方法
+     */
     @Override
     protected void doWrite(ChannelOutboundBuffer in) throws Exception {
         final SelectionKey key = selectionKey();
@@ -131,6 +146,7 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
             Object msg = in.current();
             if (msg == null) {
                 // Wrote all messages.
+                // 已经写完了所有的消息，取消SelectionKey.OP_WRITE事件
                 if ((interestOps & SelectionKey.OP_WRITE) != 0) {
                     key.interestOps(interestOps & ~SelectionKey.OP_WRITE);
                 }
@@ -149,6 +165,7 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
                     in.remove();
                 } else {
                     // Did not write all messages.
+                    //没有写完了所有的消息，说明socket缓存区满了，设置SelectionKey.OP_WRITE事件
                     if ((interestOps & SelectionKey.OP_WRITE) == 0) {
                         key.interestOps(interestOps | SelectionKey.OP_WRITE);
                     }
@@ -182,6 +199,7 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
         if (cause instanceof IOException) {
             // ServerChannel should not be closed even on IOException because it can often continue
             // accepting incoming connections. (e.g. too many open files)
+            // 即使在IOException上，ServerChannel也不应该关闭，因为它通常可以继续接受传入的连接。(例如:打开的files太多)
             return !(this instanceof ServerChannel);
         }
         return true;

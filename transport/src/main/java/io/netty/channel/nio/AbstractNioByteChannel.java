@@ -216,7 +216,8 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                     byteBuf = null;
                     /**
                      * 下面判断是否继续读取，从上面的介绍可知，while循环最多只会迭代16次，
-                     * 详见HandleImpl父类MaxMessageHandle.continueReading方法{@link }
+                     * 详见HandleImpl父类MaxMessageHandle.continueReading方法
+                     * {@link DefaultMaxMessagesRecvByteBufAllocator.MaxMessageHandle#continueReading()}
                      */
                 } while (allocHandle.continueReading());
 

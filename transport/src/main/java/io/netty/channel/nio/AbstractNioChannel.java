@@ -501,6 +501,8 @@ public abstract class AbstractNioChannel extends AbstractChannel {
      *
      * 当 Channel 处于 channelActive 状态后，对于设置了autoRead的Channel执行beginRead()
      * doBeginRead() 方法，在 selector 上注册读事件。
+     * <p>
+     * 如果autoRead为false，则当有消息来的时候，需要手动调用{@link DefaultChannelPipeline#read()}触发doBeginRead
      */
     @Override
     protected void doBeginRead() throws Exception {
