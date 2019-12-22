@@ -19,6 +19,7 @@ import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.nio.AbstractNioByteChannel;
 import io.netty.channel.socket.ChannelOutputShutdownEvent;
 import io.netty.channel.socket.ChannelOutputShutdownException;
+import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.util.DefaultAttributeMap;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.internal.PlatformDependent;
@@ -609,6 +610,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
          * bind 流程:
          *     1、调用抽象方法doBind, 它需要子类实现。
          *     2、如果channel的状态从非active变成active状态，则触发channelActive事件
+         *     {@link NioServerSocketChannel#doBind(java.net.SocketAddress)}
          */
         @Override
         public final void bind(final SocketAddress localAddress, final ChannelPromise promise) {

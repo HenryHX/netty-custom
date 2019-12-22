@@ -47,10 +47,14 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
                              implements io.netty.channel.socket.ServerSocketChannel {
 
     private static final ChannelMetadata METADATA = new ChannelMetadata(false, 16);
+    // 使用默认的多路复用器辅助类
     private static final SelectorProvider DEFAULT_SELECTOR_PROVIDER = SelectorProvider.provider();
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(NioServerSocketChannel.class);
 
+    /**
+     * 通过newSocket创建ServerSocketChannel
+     */
     private static ServerSocketChannel newSocket(SelectorProvider provider) {
         try {
             /**
@@ -84,6 +88,11 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
 
     /**
      * Create a new instance using the given {@link ServerSocketChannel}.
+     * <p>
+     * 因为是服务端新生成的channel，
+     * 第一个参数指定为null，表示没有父channel，
+     * 第二个参数指定为ServerSocketChannel，
+     * 第三个参数指定ServerSocketChannel关心的事件类型为SelectionKey.OP_ACCEPT。
      */
     public NioServerSocketChannel(ServerSocketChannel channel) {
         super(null, channel, SelectionKey.OP_ACCEPT);
@@ -109,6 +118,7 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
     public boolean isActive() {
         // As java.nio.ServerSocketChannel.isBound() will continue to return true even after the channel was closed
         // we will also need to check if it is open.
+        // 由于即使通道已关闭, java.nio.ServerSocketChannel.isBound()将继续返回true，我们也需要检查它是否打开。
         return isOpen() && javaChannel().socket().isBound();
     }
 
@@ -196,6 +206,9 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
         throw new UnsupportedOperationException();
     }
 
+    /**
+     * 对底层ServerSocket一些配置设置行为的封装
+     */
     private final class NioServerSocketChannelConfig extends DefaultServerSocketChannelConfig {
         private NioServerSocketChannelConfig(NioServerSocketChannel channel, ServerSocket javaSocket) {
             super(channel, javaSocket);

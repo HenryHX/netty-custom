@@ -51,12 +51,24 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C extends Channel> implements Cloneable {
 
+    /**
+     * 这里的EventLoopGroup 作为服务端 Acceptor 线程，负责处理客户端的请求接入
+     * 作为客户端 Connector 线程，负责注册监听连接操作位，用于判断异步连接结果。
+     */
     volatile EventLoopGroup group;
+    /**
+     * 创建channel工厂 根据传入的类型来创建不同的channel
+     * 比如服务器传入的是：NioServerSocketChannel.class
+     * 客户端传入：NioSocketChannel.class 。 加上这个注解代表这个已经过期有更好的替代类
+     */
     @SuppressWarnings("deprecation")
     private volatile ChannelFactory<? extends C> channelFactory;
+    //  SocketAddress 是用来绑定一个服务端口 用的
     private volatile SocketAddress localAddress;
+    // ChannelOption 可以给Channel 添加一些配置信息
     private final Map<ChannelOption<?>, Object> options = new ConcurrentHashMap<ChannelOption<?>, Object>();
     private final Map<AttributeKey<?>, Object> attrs = new ConcurrentHashMap<AttributeKey<?>, Object>();
+    //  ChannelHandler 是具体怎么处理Channel 的IO事件。
     private volatile ChannelHandler handler;
 
     AbstractBootstrap() {
@@ -94,6 +106,10 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
      * The {@link Class} which is used to create {@link Channel} instances from.
      * You either use this or {@link #channelFactory(io.netty.channel.ChannelFactory)} if your
      * {@link Channel} implementation has no no-args constructor.
+     *
+     * 设置服务端的Channel,Netty通过Channel工厂类创建不同的Channel。
+     * 对于服务端传入:Netty需要创建NioServerSocketChannel
+     * 对于客户端传入:NioSocketChannel.class
      *
      * 如果channelClass有无参构造函数，推荐使用这个方法
      */
@@ -210,6 +226,9 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
      * Returns a deep clone of this bootstrap which has the identical configuration.  This method is useful when making
      * multiple {@link Channel}s with similar settings.  Please note that this method does not clone the
      * {@link EventLoopGroup} deeply but shallowly, making the group a shared resource.
+     * <p></p>
+     * 返回具有与这个bootstrap相同配置的深度克隆。此方法在使用 类似设置 创建多个{@link Channel}时非常有用。
+     * 请注意，此方法不会深度克隆{@link EventLoopGroup}，而是浅克隆，所以应该使{@link EventLoopGroup}成为共享资源
      */
     @Override
     @SuppressWarnings("CloneDoesntDeclareCloneNotSupportedException")
@@ -502,6 +521,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
 
         // Is set to the correct EventExecutor once the registration was successful. Otherwise it will
         // stay null and so the GlobalEventExecutor.INSTANCE will be used for notifications.
+        // 注册成功后，将其设置为正确的EventExecutor。否则它将保持为null，使用GlobalEventExecutor.INSTANCE实例用于通知。
         private volatile boolean registered;
 
         PendingRegistrationPromise(Channel channel) {
@@ -521,6 +541,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
                 return super.executor();
             }
             // The registration failed so we can only use the GlobalEventExecutor as last resort to notify.
+            // 注册失败，因此我们只能使用GlobalEventExecutor作为最后的通知手段。
             return GlobalEventExecutor.INSTANCE;
         }
     }
