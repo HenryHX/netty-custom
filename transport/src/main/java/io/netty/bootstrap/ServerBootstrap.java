@@ -15,18 +15,7 @@
  */
 package io.netty.bootstrap;
 
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelConfig;
-import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelFutureListener;
-import io.netty.channel.ChannelHandler;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
-import io.netty.channel.ChannelInitializer;
-import io.netty.channel.ChannelOption;
-import io.netty.channel.ChannelPipeline;
-import io.netty.channel.EventLoopGroup;
-import io.netty.channel.ServerChannel;
+import io.netty.channel.*;
 import io.netty.util.AttributeKey;
 import io.netty.util.internal.ObjectUtil;
 import io.netty.util.internal.logging.InternalLogger;
@@ -139,6 +128,17 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
                 childOptions.entrySet().toArray(newOptionArray(0));
         final Entry<AttributeKey<?>, Object>[] currentChildAttrs = childAttrs.entrySet().toArray(newAttrArray(0));
 
+        /**
+         * 由于此时这个Channel还没有被register到EventLoop，于是在addLast方法的调用链中，
+         * {@link DefaultChannelPipeline#addLast(io.netty.util.concurrent.EventExecutorGroup, java.lang.String, io.netty.channel.ChannelHandler)}
+         * 会给pipeline添加一个PendingHandlerAddedTask，其目的是在Channel被register到EventLoop的时候，触发一个回调事件
+         *
+         * 然后在{@link AbstractBootstrap#initAndRegister()}方法中，这个Channel会被register到boss EventLoopGoup，
+         * 接着会被register到boss EventLoopGoup中的某一个具体的EventLoop
+         *
+         * 在{@link AbstractChannel.AbstractUnsafe#register0(io.netty.channel.ChannelPromise)}方法中，之前注册的PendingHandlerAddedTask会被调用，
+         * 经过一系列调用之后，ChannelInitializer.handleAdded()方法会被触发,{@link AbstractChannelHandlerContext#invokeHandler()}此后该handler才能响应消息
+         */
         p.addLast(new ChannelInitializer<Channel>() {
             @Override
             public void initChannel(final Channel ch) {

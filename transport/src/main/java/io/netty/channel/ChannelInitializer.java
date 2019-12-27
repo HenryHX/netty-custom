@@ -21,6 +21,7 @@ import io.netty.channel.ChannelHandler.Sharable;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 
+import javax.annotation.Resource;
 import java.util.Collections;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -49,6 +50,17 @@ import java.util.concurrent.ConcurrentHashMap;
  * Be aware that this class is marked as {@link Sharable} and so the implementation must be safe to be re-used.
  *
  * @param <C>   A sub-type of {@link Channel}
+ *
+ * <p></p>
+ * ChannelInitializer的主要目的是为程序员提供了一个简单的工具，用于在某个Channel注册到EventLoop后，对这个Channel执行一些初始化操作。
+ *           ChannelInitializer虽然会在一开始会被注册到Channel相关的pipeline里，
+ *           但是在初始化完成之后，ChannelInitializer会将自己从pipeline中移除，不会影响后续的操作。
+ *
+ * 使用场景：
+ *
+ * a. 在ServerBootstrap初始化时，为监听端口accept事件的Channel添加ServerBootstrapAcceptor
+ *
+ * b. 在有新链接进入时，为监听客户端read/write事件的Channel添加用户自定义的ChannelHandler
  */
 @Sharable
 public abstract class ChannelInitializer<C extends Channel> extends ChannelInboundHandlerAdapter {
@@ -56,12 +68,15 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(ChannelInitializer.class);
     // We use a Set as a ChannelInitializer is usually shared between all Channels in a Bootstrap /
     // ServerBootstrap. This way we can reduce the memory usage compared to use Attributes.
+    // 我们使用一个Set作为一个通道初始化器，该初始化器通常在一个Bootstrap/ServerBootstrap的所有通道之间共享。通过这种方式，我们可以减少与使用属性相比的内存使用量。
     private final Set<ChannelHandlerContext> initMap = Collections.newSetFromMap(
             new ConcurrentHashMap<ChannelHandlerContext, Boolean>());
 
     /**
      * This method will be called once the {@link Channel} was registered. After the method returns this instance
      * will be removed from the {@link ChannelPipeline} of the {@link Channel}.
+     * <p>
+     * ChannelInitializer的实现类必须要重写这个方法，这个方法在Channel被注册到EventLoop的时候会被调用
      *
      * @param ch            the {@link Channel} which was registered.
      * @throws Exception    is thrown if an error occurs. In that case it will be handled by
@@ -109,6 +124,8 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
             // The good thing about calling initChannel(...) in handlerAdded(...) is that there will be no ordering
             // surprises if a ChannelInitializer will add another ChannelInitializer. This is as all handlers
             // will be added in the expected order.
+            // 在handleradd(…)中调用initChannel(…)的好处是，如果一个ChannelInitializer将添加另一个ChannelInitializer，
+            // 则不会出现排序意外。这是因为所有的处理程序都将按照预期的顺序添加。
             if (initChannel(ctx)) {
 
                 // We are done with init the Channel, removing the initializer now.
@@ -117,6 +134,10 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
         }
     }
 
+    /**
+     * {@link ChannelInitializer#initChannel(io.netty.channel.ChannelHandlerContext)}执行完成后，从pipeline.remove(this)
+     * 成功时会触发该方法
+     */
     @Override
     public void handlerRemoved(ChannelHandlerContext ctx) throws Exception {
         initMap.remove(ctx);
