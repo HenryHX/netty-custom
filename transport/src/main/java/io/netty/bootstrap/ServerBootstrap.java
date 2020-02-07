@@ -31,6 +31,9 @@ import java.util.concurrent.TimeUnit;
  * 类ServerBootstrap用于帮助服务器端引导ServerChannel
  *
  * ServerBootstrap除了处理ServerChannel外, 还需要处理从ServerChannel下创建的Channel. Netty中称这两个关系为parent和child.
+ * <p></p>
+ * 服务端不需要设置服务端的handler，其内置了一个ServerBoostrapAcceptor，主要设置了客户端的channel属性，
+ * 这段逻辑最终也是由服务端的channel的read相关方法控制的，即服务端的channel，read方法接收的是一个channel而不是一个byte。
  */
 public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerChannel> {
 
@@ -137,7 +140,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
          * 接着会被register到boss EventLoopGoup中的某一个具体的EventLoop
          *
          * 在{@link AbstractChannel.AbstractUnsafe#register0(io.netty.channel.ChannelPromise)}方法中，之前注册的PendingHandlerAddedTask会被调用，
-         * 经过一系列调用之后，ChannelInitializer.handleAdded()方法会被触发,{@link AbstractChannelHandlerContext#invokeHandler()}此后该handler才能响应消息
+         * 经过一系列调用之后，ChannelInitializer.handleAdded()方法会被触发,{@link AbstractChannelHandlerContext#invokeHandler()},此后该handler才能响应消息
          */
         p.addLast(new ChannelInitializer<Channel>() {
             @Override
@@ -191,7 +194,8 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             // Task which is scheduled to re-enable auto-read.
             // It's important to create this Runnable before we try to submit it as otherwise the URLClassLoader may
             // not be able to load the class because of the file limit it already reached.
-            //
+            // 在尝试提交之前创建这个Runnable非常重要，否则URLClassLoader可能无法加载该类，因为它已经达到了文件限制。
+
             // See https://github.com/netty/netty/issues/1328
             enableAutoReadTask = new Runnable() {
                 @Override
@@ -235,6 +239,8 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             final ChannelConfig config = ctx.channel().config();
             if (config.isAutoRead()) {
                 // stop accept new connections for 1 second to allow the channel to recover
+                // 停止接受新连接1秒，然后允许通道恢复
+
                 // See https://github.com/netty/netty/issues/1328
                 config.setAutoRead(false);
                 ctx.channel().eventLoop().schedule(enableAutoReadTask, 1, TimeUnit.SECONDS);

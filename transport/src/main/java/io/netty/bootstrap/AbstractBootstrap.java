@@ -377,7 +377,10 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         return regFuture;
     }
 
-    // initAndRegister中途调用
+    /**
+     *  initAndRegister中创建完new channel后调用
+     *  {@link AbstractBootstrap#initAndRegister()}
+     */
     abstract void init(Channel channel) throws Exception;
 
     private static void doBind0(
@@ -386,7 +389,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
 
         // This method is invoked before channelRegistered() is triggered.  Give user handlers a chance to set up
         // the pipeline in its channelRegistered() implementation.
-        // 这个方法在channelRegistered()方法触发前被调用. 让handlers有机会在它的channelRegistered()实现中构建pipeline
+        // 这个方法在channelRegistered()方法触发前被调用. 让用户处理程序handlers有机会在其channelRegistered()实现中设置管道。
         // 给channel的event loop增加一个一次性任务
         channel.eventLoop().execute(new Runnable() {
             @Override

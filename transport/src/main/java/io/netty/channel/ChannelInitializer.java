@@ -68,7 +68,8 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(ChannelInitializer.class);
     // We use a Set as a ChannelInitializer is usually shared between all Channels in a Bootstrap /
     // ServerBootstrap. This way we can reduce the memory usage compared to use Attributes.
-    // 我们使用一个Set作为一个通道初始化器，该初始化器通常在一个Bootstrap/ServerBootstrap的所有通道之间共享。通过这种方式，我们可以减少与使用属性相比的内存使用量。
+    // 我们使用一个Set，因为该初始化器通常在一个Bootstrap/ServerBootstrap的所有通道之间共享。
+    // 通过这种方式，我们可以减少与使用属性相比的内存使用量。
     private final Set<ChannelHandlerContext> initMap = Collections.newSetFromMap(
             new ConcurrentHashMap<ChannelHandlerContext, Boolean>());
 
@@ -129,6 +130,7 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
             if (initChannel(ctx)) {
 
                 // We are done with init the Channel, removing the initializer now.
+                // 我们已经完成了对通道的初始化，现在删除初始化器。
                 removeState(ctx);
             }
         }
@@ -145,12 +147,15 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
 
     @SuppressWarnings("unchecked")
     private boolean initChannel(ChannelHandlerContext ctx) throws Exception {
+        // 因为不同的Channel可能共享同一个ChannelInitializer，所以使用一个set避免同一个channel多次调用初始化
+        // （入参ctx 是不同的channel使用同一个ChannelInitializer初始化的）
         if (initMap.add(ctx)) { // Guard against re-entrance.
             try {
                 initChannel((C) ctx.channel());
             } catch (Throwable cause) {
                 // Explicitly call exceptionCaught(...) as we removed the handler before calling initChannel(...).
                 // We do so to prevent multiple calls to initChannel(...).
+                // 在调用initChannel(…)之前删除handler时, 显式调用exceptionCaught(…)。这样做是为了防止对initChannel(…)的多次调用。
                 exceptionCaught(ctx, cause);
             } finally {
                 ChannelPipeline pipeline = ctx.pipeline();
@@ -165,11 +170,14 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
 
     private void removeState(final ChannelHandlerContext ctx) {
         // The removal may happen in an async fashion if the EventExecutor we use does something funky.
+        // 如果我们使用的EventExecutor做了一些奇怪的事情，则可能会以异步方式进行删除。
         if (ctx.isRemoved()) {
             initMap.remove(ctx);
         } else {
             // The context is not removed yet which is most likely the case because a custom EventExecutor is used.
             // Let's schedule it on the EventExecutor to give it some more time to be completed in case it is offloaded.
+            // 还没有删除上下文，这很可能是因为使用了自定义EventExecutor。
+            // 让我们将它安排在EventExecutor上，以便在卸载它时有更多的时间来完成它。
             ctx.executor().execute(new Runnable() {
                 @Override
                 public void run() {
