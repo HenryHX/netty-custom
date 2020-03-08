@@ -149,7 +149,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
      * the select method and the select method will block for that time unless
      * waken up.
      * <p>
-     * 一个原子类的Boolean标识，用于控制决定一个阻塞着的Selector.select是否应该结束它的选择操作。
+     * 一个原子类的Boolean标识，用于控制决定一个阻塞着的Selector.select是否应该结束它的select()选择操作。
      * 在我们的例子中，我们为select方法使用了超时，而select方法将在此期间阻塞，除非唤醒。
      */
     private final AtomicBoolean wakenUp = new AtomicBoolean();
@@ -776,7 +776,8 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             // See https://github.com/netty/netty/issues/5125
             //
             // b) 如果获取到的EventLoop不是当前的执行线程所绑定的EventLoop，或者获取到的EventLoop为null，则直接返回。
-            //       因为我们只关注依然注册在当前执行线程所绑定的EventLoop上的Channel。Channel可能已经从当前的EventLoop上注销了，并且它的SelectionKey可能已经被取消了，
+            //       因为我们只关注依然注册在当前执行线程所绑定的EventLoop上的Channel。Channel可能已经从当前的EventLoop上注销了，
+            //       并且它的SelectionKey可能已经被取消了，
             //       作为在注销处理流程的一部分。当然，如果Channel仍然健康的被注册在当前的EventLoop上，则需要去关闭它；
             if (eventLoop != this || eventLoop == null) {
                 return;
@@ -797,7 +798,8 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 // See https://github.com/netty/netty/issues/924
 
                 // 当SelectionKey.OP_CONNECT(连接事件)准备就绪时，我们执行如下操作：
-                // 将SelectionKey.OP_CONNECT事件从SelectionKey所感兴趣的事件中移除，这样Selector就不会再去监听该连接的SelectionKey.OP_CONNECT事件了。
+                // 将SelectionKey.OP_CONNECT事件从SelectionKey所感兴趣的事件中移除，
+                // 这样Selector就不会再去监听该连接的SelectionKey.OP_CONNECT事件了。
                 // 而SelectionKey.OP_CONNECT连接事件是只需要处理一次的事件，一旦连接建立完成，就可以进行读、写操作了。
                 int ops = k.interestOps();
                 ops &= ~SelectionKey.OP_CONNECT;
@@ -927,7 +929,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         try {
             // 直接委托个Nio事件循环选择器
             /**
-             * select方法的3中操作形式，实际上委托给为lockAndDoSelect方法，方法实际上是同步的，
+             * select方法的3种操作形式，实际上委托给为{@link SelectorImpl#lockAndDoSelect(long)}方法，方法实际上是同步的，
              * 可安全访问，获取key集合代理publicKeys和就绪key代理集合publicSelectedKeys，然后交给
              * doSelect(long l)方法，这个方法为抽象方法，待子类扩展。
              */
@@ -979,7 +981,8 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 // Selector#wakeup. So we need to check task queue again before executing select operation.
                 // If we don't, the task might be pended until select operation was timed out.
                 // It might be pended until idle timeout if IdleStateHandler existed in pipeline.
-                // 如果一个任务在wakenUp值为true的情况下被提交上来，那么这个任务将没有机会去调用Selector.wakeup()(即，此时’d)wakenUp成员变量当前的值为false’条件不满足)。
+                // 如果一个任务在wakenUp值为true的情况下被提交上来，那么这个任务将没有机会去调用Selector.wakeup()
+                // (即，此时)wakenUp成员变量当前的值为false’条件不满足)。
                 // 所以我们需要去再次检测任务队列中是否有待执行的任务，在执行Selector.select操作之前。
                 // 如果我们不这么做，那么任务队列中的任务将等待直到Selector.select操作超时。
                 // 如果ChannelPipeline中存在IdleStateHandler，那么IdleStateHandler处理器可能会被挂起直到空闲超时。
@@ -992,11 +995,14 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 // 而此时，wakenUp已经被置位true了，在此之后有任务提交至EventLoop，那么是无法触发Selector.wakeup()的。
                 // 所以如果当前有待处理的任务，就不会进行下面的Selector.select(long timeout)操作，而是退出select方法，继而去处理任务。
                 //
-                // 因为如果不这么做的话，如果当前NioEventLoop线程上已经有任务提交上来，这会使得这些任务可能会需要等待Selector.select(long timeout)操作超时后才能得以执行。
-                // 再者，假设我们的ChannelPipeline中存在一个IdleStateHandler，那么就可能导致因为『Selector.select(long timeout)』操作的timeout比IdleStateHandler设置
+                // 因为如果不这么做的话，如果当前NioEventLoop线程上已经有任务提交上来，
+                //      这会使得这些任务可能会需要等待Selector.select(long timeout)操作超时后才能得以执行。
+                // 再者，假设我们的ChannelPipeline中存在一个IdleStateHandler，
+                //      那么就可能导致因为『Selector.select(long timeout)』操作的timeout比IdleStateHandler设置
                 //      的idle timeout长，而导致IdleStateHandler不能对空闲超时做出即使的处理。
                 //
-                // 同时，我们注意，在执行‘break’退出select方法前，会执行‘selector.selectNow()’，该方法不会阻塞，它会立即返回，同时它会抵消Selector.wakeup()操作带来的影响
+                // 同时，我们注意，在执行‘break’退出select方法前，会执行‘selector.selectNow()’，该方法不会阻塞，它会立即返回，
+                //      同时它会抵消Selector.wakeup()操作带来的影响
                 if (hasTasks() && wakenUp.compareAndSet(false, true)) {
                     // 因为提交任务的线程是非NioEventLoop线程，所以也可能是由NioEventLoop线程成功执行了『if (hasTasks() && wakenUp.compareAndSet(false, true))』，
                     // 退出了select方法转而去执行任务队列中的任务。注意，这是提交任务的非NioEventLoop线程就不会执行『selector.wakeup()』。

@@ -131,7 +131,7 @@ public class NioEventLoopGroup extends MultithreadEventLoopGroup {
         }
     }
 
-    // args 按顺序应该是 selectorProvider, selectStrategyFactory, rejectedExecutionHandler, taskQueueFactory
+    // args 按顺序应该是 selectorProvider, selectStrategyFactory, rejectedExecutionHandler, taskQueueFactory(可能没有)
     @Override
     protected EventLoop newChild(Executor executor, Object... args) throws Exception {
         EventLoopTaskQueueFactory queueFactory = args.length == 4 ? (EventLoopTaskQueueFactory) args[3] : null;

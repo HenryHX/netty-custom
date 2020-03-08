@@ -89,6 +89,10 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     private volatile Thread thread;
     @SuppressWarnings("unused")
     private volatile ThreadProperties threadProperties;
+    /**
+     * 调用{@link io.netty.util.concurrent.ThreadPerTaskExecutor#execute(java.lang.Runnable)}，
+     * 创建一个新线程，作为该eventexecutor的关联线程:{@link SingleThreadEventExecutor#thread}
+     */
     private final Executor executor;
     private volatile boolean interrupted;
 
@@ -98,6 +102,8 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     // 调用addTask(Runnable)添加任务时是否能唤醒线程决定了addTaskWakesUp 是true还是false。
     //      如果addTask(Runnable)添加任务时能唤醒线程，那么addTaskWakesUp=true；
     //      如果addTask(Runnable)添加任务时不能唤醒线程，那么addTaskWakesUp=false；
+    // 由于DefaultEventExecutor是通过BlockingQueue的阻塞来实现唤醒的，所以addTaskWakesUp=true。因此，不需要执行wakeup(inEventLoop)主动唤醒。
+    // 对于NioEventLoop来时，阻塞的是selector.select()方法，该阻塞在添加任务时不能被唤醒，所以需要执行 wakeup(inEventLoop)主动唤醒。
     private final boolean addTaskWakesUp;
     /**拒绝新任务之前的最大挂起任务数。*/
     private final int maxPendingTasks;
@@ -460,6 +466,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         boolean ranAtLeastOne = false;
 
         do {
+            // fetchedAll=false表示ScheduledTaskQueue有可以执行的任务，但插入到taskQueue失败
             fetchedAll = fetchFromScheduledTaskQueue();
             if (runAllTasksFrom(taskQueue)) {
                 ranAtLeastOne = true;
@@ -598,6 +605,8 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     /**
      * Returns the amount of time left until the scheduled task with the closest dead line is executed.
      * <p>返回最近期限的计划任务的剩余时间。</p>
+     *
+     * @param currentTimeNanos 真实的绝对时间
      */
     protected long delayNanos(long currentTimeNanos) {
         ScheduledFutureTask<?> scheduledTask = peekScheduledTask();
@@ -744,7 +753,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     public Future<?> shutdownGracefully(long quietPeriod, long timeout, TimeUnit unit) {
         // 首先进行参数及其状态判断，quietPeriod此处值为2s，表明在quietPeriod这么长的时间段内如果没有请求提交那么直接关闭服务，
         // 如果有，则重新开始计算时间直到在quietPeriod时间段内没有请求提交或者超时，超时时间为timeout，所以quietPeriod必须大于0，
-        // timeout必须大于quietPeriod，接着判断服务是否已经关闭，如果已经有现成执行了关闭操作了，那么就直接放回terminationFuture
+        // timeout必须大于quietPeriod，接着判断服务是否已经关闭，如果已经有线程执行了关闭操作了，那么就直接放回terminationFuture
         if (quietPeriod < 0) {
             throw new IllegalArgumentException("quietPeriod: " + quietPeriod + " (expected >= 0)");
         }
@@ -796,6 +805,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
             return terminationFuture;
         }
 
+        // 唤醒thread线程，执行confirmShutdown
         if (wakeup) {
             taskQueue.offer(WAKEUP_TASK);
             if (!addTaskWakesUp) {
@@ -1113,6 +1123,11 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         return false;
     }
 
+    /**
+     * 调用{@link io.netty.util.concurrent.ThreadPerTaskExecutor#execute(java.lang.Runnable)}，
+     * 创建一个新线程，作为该eventexecutor的关联线程，{@link SingleThreadEventExecutor#thread}
+     * 执行{@link io.netty.channel.nio.NioEventLoop#run()}
+     */
     private void doStartThread() {
         assert thread == null;
         // 会创建一个新的线程执行
@@ -1129,7 +1144,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                 try {
                     /**
                      * 子类重写，用于循环处理channel事件 {@link io.netty.channel.nio.NioEventLoop.run()}
-                     * 如果线程池已经处于中断状态，此时run方法中会执行confirmShutdown()
+                     * 如果线程已经处于ShuttingDown状态，此时run方法中会执行{@link SingleThreadEventExecutor#confirmShutdown()}
                      */
                     SingleThreadEventExecutor.this.run();
                     success = true;

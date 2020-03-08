@@ -26,7 +26,8 @@ import static io.netty.util.internal.ObjectUtil.checkNotNull;
 /**
  * The default {@link ChannelPromise} implementation.  It is recommended to use {@link Channel#newPromise()} to create
  * a new {@link ChannelPromise} rather than calling the constructor explicitly.
- * <p>默认的{@link ChannelPromise}实现。建议使用{@link Channel#newPromise()}来创建一个新的{@link ChannelPromise}，而不是显式地调用构造函数。</p>
+ * <p>默认的{@link ChannelPromise}实现。
+ * 建议使用{@link Channel#newPromise()}来创建一个新的{@link ChannelPromise}，而不是显式地调用构造函数。</p>
  */
 public class DefaultChannelPromise extends DefaultPromise<Void> implements ChannelPromise, FlushCheckpoint {
 
@@ -164,6 +165,7 @@ public class DefaultChannelPromise extends DefaultPromise<Void> implements Chann
 
     /**
      * 如果{@link Channel}已经用{@link EventLoop}注册，则检查死锁。
+     * 未注册时，{@link DefaultPromise#checkDeadLock()}中executor的thread为null
      */
     @Override
     protected void checkDeadLock() {

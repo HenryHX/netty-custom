@@ -39,7 +39,11 @@ final class ScheduledFutureTask<V> extends PromiseTask<V> implements ScheduledFu
         return System.nanoTime() - START_TIME;
     }
 
-    // 获取最后一次的执行时间，此方法一般用于循环任务
+    /**
+     * 下一次执行时间和任务创建时间的间隔
+     * @param delay
+     * @return
+     */
     static long deadlineNanos(long delay) {
         // 使用当前时间减去任务开始时间并且加上周期，不管怎么算都会是下一次执行时间和任务创建时间的间隔
         // 这里稍微有点绕，此处并不是使用具体的时间进行比较的而是使用时间段进行比较的，
