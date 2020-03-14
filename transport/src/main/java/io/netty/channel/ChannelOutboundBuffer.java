@@ -46,6 +46,7 @@ import static java.lang.Math.min;
  * 目的是为了提高网络的吞吐量，在外面调用 write 的时候，数据并没有写到 Socket，而是写到了 ChannelOutboundBuffer 这里，当调用 flush 的时候，才真正的向 Socket 写出。
  * <p>
  * All methods must be called by a transport implementation from an I/O thread, except the following ones:
+ * <p>所有方法都必须由传输实现从I/O线程调用，除了以下方法:s</p>
  * <ul>
  * <li>{@link #size()} and {@link #isEmpty()}</li>
  * <li>{@link #isWritable()}</li>
@@ -162,7 +163,8 @@ public final class ChannelOutboundBuffer {
      * 但是这个方法并不是做刷新到 Socket 的操作。而是将 unflushedEntry 的引用转移到 flushedEntry 引用中，表示即将刷新这个 flushedEntry，
      * 至于为什么这么做？
      * <p>
-     * 答：因为 Netty 提供了 promise，这个对象可以做取消操作，例如，不发送这个 ByteBuf 了，所以，在 write 之后，flush 之前需要告诉 promise 不能做取消操作了。
+     * 答：因为 Netty 提供了 promise，这个对象可以做取消操作，例如，不发送这个 ByteBuf 了，
+     * 所以，在 write 之后，flush 之前需要告诉 promise 不能做取消操作了。
      */
     public void addFlush() {
         // There is no need to process all entries if there was already a flush before and no new messages
@@ -479,7 +481,7 @@ public final class ChannelOutboundBuffer {
      * @param maxBytes A hint toward the maximum number of bytes to include as part of the return value. Note that this
      *                 value maybe exceeded because we make a best effort to include at least 1 {@link ByteBuffer}
      *                 in the return value to ensure write progress is made.
-     *                 指向返回值中包含的最大字节数的提示。注意，这个返回值可能超过了这个值，
+     *                 注意，在只有一个消息的情况下这个值可能被超过，
      *                 因为我们尽了最大的努力在返回值中包含至少1个{@link ByteBuffer}，以确保进行写操作。
      */
     public ByteBuffer[] nioBuffers(int maxCount, long maxBytes) {
@@ -939,7 +941,7 @@ public final class ChannelOutboundBuffer {
         Object msg;
         ByteBuffer[] bufs;
         ByteBuffer buf;
-        // 该异步写操作的ChannelPromise（用于在完成真是的网络层write后去标识异步操作的完成以及回调已经注册到该promise上的listeners）;
+        // 该异步写操作的ChannelPromise（用于在完成真实的网络层write后去标识异步操作的完成以及回调已经注册到该promise上的listeners）;
         ChannelPromise promise;
         long progress;
         // 待发送数据包的总大小（该属性与pendingSize的区别在于，如果是待发送的是FileRegion数据对象，

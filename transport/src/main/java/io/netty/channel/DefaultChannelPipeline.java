@@ -82,7 +82,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     private final VoidChannelPromise voidPromise;
     private final boolean touch = ResourceLeakDetector.isEnabled();
 
-    // 线程池中的线程映射，记住这个映射是为了保证执行handler任务时使用同一个线程
+    // 线程池中的线程映射，记住这个映射是为了保证执行handler任务时使用同一个线程,不同的pipeline中childExecutors不一定一样
     private Map<EventExecutorGroup, EventExecutor> childExecutors;
     // 消息字节大小估算器
     private volatile MessageSizeEstimator.Handle estimatorHandle;
@@ -1347,7 +1347,8 @@ public class DefaultChannelPipeline implements ChannelPipeline {
      * in {@link ChannelInboundHandler#userEventTriggered(ChannelHandlerContext, Object)}. This method is responsible
      * to call {@link ReferenceCountUtil#release(Object)} on the given event at some point.
      * <p></p>
-     * 当用户事件到达 {@link ChannelPipeline}的最后都没有被{@link ChannelInboundHandler#userEventTriggered(ChannelHandlerContext, Object)}处理调用时执行。
+     * 当用户事件到达 {@link ChannelPipeline}的最后都没有被
+     * {@link ChannelInboundHandler#userEventTriggered(ChannelHandlerContext, Object)}处理调用时执行。
      * 这个方法负责在某个时候对给定的事件调用{@link ReferenceCountUtil#release(Object)}。
      */
     protected void onUnhandledInboundUserEventTriggered(Object evt) {

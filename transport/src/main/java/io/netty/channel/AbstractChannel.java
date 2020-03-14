@@ -17,6 +17,7 @@ package io.netty.channel;
 
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.nio.AbstractNioByteChannel;
+import io.netty.channel.nio.AbstractNioChannel;
 import io.netty.channel.socket.ChannelOutputShutdownEvent;
 import io.netty.channel.socket.ChannelOutputShutdownException;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
@@ -487,6 +488,12 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             assert !registered || eventLoop.inEventLoop();
         }
 
+        /**
+         * config设置RecvByteBufAllocator
+         * {@link DefaultChannelConfig#DefaultChannelConfig(io.netty.channel.Channel, io.netty.channel.RecvByteBufAllocator)}
+         * {@link AdaptiveRecvByteBufAllocator#newHandle()}
+         * @return
+         */
         @Override
         public RecvByteBufAllocator.Handle recvBufAllocHandle() {
             if (recvHandle == null) {
@@ -530,6 +537,9 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
             // 判断eventLoop是否是给定的子类型，如NioEventLoop(===> 判断eventLoop是否是给定的子类型，如NioEventLoop)
+            /**
+             * {@link AbstractNioChannel#isCompatible(io.netty.channel.EventLoop)}
+             */
             if (!isCompatible(eventLoop)) {
                 promise.setFailure(
                         new IllegalStateException("incompatible event loop type: " + eventLoop.getClass().getName()));
@@ -985,10 +995,12 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             assertEventLoop();
 
             // 获取该NioSocketChannel的ChannelOutboundBuffer成员属性。
-            //（确切地来说ChannelOutboundBuffer是NioSocketChannelUnsafe对象中的成员属性，而NioSocketChannelUnsafe才是NioSocketChannel的成员属性。）
+            //（确切地来说ChannelOutboundBuffer是NioSocketChannelUnsafe对象中的成员属性，
+            // 而NioSocketChannelUnsafe才是NioSocketChannel的成员属性。）
             // 每一个NioSocketChannel会维护一个它们自己的ChannelOutboundBuffer，用于存储待出站写请求。
             ChannelOutboundBuffer outboundBuffer = this.outboundBuffer;
-            // 判断该outboundBuffer是否为null，如果为null则说明该NioSocketChannel已经关闭了，那么就会标志该异步写操作为失败完成，需要使用promise返回错误，并释放写消息后返回。
+            // 判断该outboundBuffer是否为null，如果为null则说明该NioSocketChannel已经关闭了，
+            // 那么就会标志该异步写操作为失败完成，需要使用promise返回错误，并释放写消息后返回。
             if (outboundBuffer == null) {
                 // If the outboundBuffer is null we know the channel was closed and so
                 // need to fail the future right away. If it is not null the handling of the rest
@@ -1003,7 +1015,8 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             int size;
             try {
                 /**
-                 * 过滤待发送的消息 {@link AbstractNioByteChannel#filterOutboundMessage(java.lang.Object)}，把堆ByteBuf转换为一个非堆的ByteBuf返回
+                 * 过滤待发送的消息 {@link AbstractNioByteChannel#filterOutboundMessage(java.lang.Object)}，
+                 * 把堆ByteBuf转换为一个非堆的ByteBuf返回
                  * <p></p>
                  * 估计待发送消息数据的大小 {@link DefaultMessageSizeEstimator.HandleImpl#size(java.lang.Object)}
                  */

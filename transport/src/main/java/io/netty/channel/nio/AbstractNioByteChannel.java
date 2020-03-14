@@ -108,7 +108,9 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
     protected class NioByteUnsafe extends AbstractNioUnsafe {
 
         private void closeOnRead(ChannelPipeline pipeline) {
+            // input关闭了吗？
             if (!isInputShutdown0()) {
+                // 是否支持半关闭，如果是，关闭读，触发事件
                 if (isAllowHalfClosure(config())) {
                     shutdownInput();
                     pipeline.fireUserEventTriggered(ChannelInputShutdownEvent.INSTANCE);
@@ -174,7 +176,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             boolean close = false;
             /**
              * 进入一个循环，循环体的作用是：使用内存分配器获取数据容器ByteBuf，调用 doReadBytes 方法将数据读取到容器中，
-             * 如果这次读取什么都没有或远程连接关闭，则跳出循环。还有，如果满足了跳出推荐，也要结束循环，不能无限循环，默认16 次，
+             * 如果这次读取什么都没有或远程连接关闭，则跳出循环。还有，如果满足了跳出条件，也要结束循环，不能无限循环，默认16 次，
              * 默认参数来自 AbstractNioByteChannel 的 属性 ChannelMetadata 类型的 METADATA 实例。
              *
              * 每读取一次就调用 pipeline 的 channelRead 方法，为什么呢？
@@ -195,11 +197,14 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                      * 详见下面的{@link AdaptiveRecvByteBufAllocator.HandleImpl#lastBytesRead(int)}方法
                      */
                     allocHandle.lastBytesRead(doReadBytes(byteBuf));
+                    // 正常关闭返回-1
+                    // 读过程异常关闭跑出IOException
                     if (allocHandle.lastBytesRead() <= 0) {
                         // nothing was read. release the buffer.
                         byteBuf.release();
                         byteBuf = null;
                         // 如果此次读取没有读到任何数据，则关闭
+                        // 判断接收的数据大小是否<0，如果是，说明是关闭连接事件，开始执行关闭
                         close = allocHandle.lastBytesRead() < 0;
                         if (close) {
                             // There is nothing left to read as we received an EOF.

@@ -200,10 +200,12 @@ public abstract class DefaultMaxMessagesRecvByteBufAllocator implements MaxMessa
          * 2、且猜测是否还有更多数据，如果实际读取的和预估的一致，说明可能还有数据没读，需要再次循环。
          * <p>
          * 3、如果读取次数未达到 16 次，继续读取。
-         *     <p>  a、初始化channel时在{@link AbstractNioByteChannel#METADATA}设置{@link ChannelMetadata#ChannelMetadata(boolean, int)}.defaultMaxMessagesPerRead = 16
+         *     <p>  a、初始化channel时在{@link AbstractNioByteChannel#METADATA}设置
+         *              {@link ChannelMetadata#ChannelMetadata(boolean, int)}.defaultMaxMessagesPerRead = 16
          *     <p>  b、而{@link DefaultChannelConfig#setRecvByteBufAllocator(io.netty.channel.RecvByteBufAllocator, io.netty.channel.ChannelMetadata)}
-         *     通过{@link AbstractNioByteChannel#METADATA}设置DefaultChannelConfig配置的RecvByteBufAllocator（即this对象）的defaultMaxMessagesPerRead为16
-         *     <p>  c、之后{@link AbstractNioByteChannel.NioByteUnsafe#read()}读循环过程中使用的RecvByteBufAllocator正是上述DefaultChannelConfig中的{@link AbstractChannel.AbstractUnsafe#recvBufAllocHandle()}</p>
+         *              通过{@link AbstractNioByteChannel#METADATA}设置DefaultChannelConfig配置的RecvByteBufAllocator（即this对象）的defaultMaxMessagesPerRead为16
+         *     <p>  c、之后{@link AbstractNioByteChannel.NioByteUnsafe#read()}读循环过程中
+         *              使用的RecvByteBufAllocator正是上述DefaultChannelConfig中的{@link AbstractChannel.AbstractUnsafe#recvBufAllocHandle()}</p>
          * <p>
          * 4、如果读取到的总数大于0，说明有数据，继续读取。
          * <p>

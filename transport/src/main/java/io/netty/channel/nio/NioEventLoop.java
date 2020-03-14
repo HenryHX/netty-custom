@@ -15,13 +15,8 @@
  */
 package io.netty.channel.nio;
 
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelException;
-import io.netty.channel.EventLoop;
-import io.netty.channel.EventLoopException;
-import io.netty.channel.EventLoopTaskQueueFactory;
-import io.netty.channel.SelectStrategy;
-import io.netty.channel.SingleThreadEventLoop;
+import io.netty.channel.*;
+import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.util.IntSupplier;
 import io.netty.util.concurrent.RejectedExecutionHandler;
 import io.netty.util.internal.PlatformDependent;
@@ -875,6 +870,12 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
 
         for (AbstractNioChannel ch: channels) {
+            /**
+             * close的同时会cancel key {@link NioSocketChannel#doClose()}
+             * <p>{@link AbstractChannel.AbstractUnsafe#close(io.netty.channel.ChannelPromise, java.lang.Throwable, java.nio.channels.ClosedChannelException, boolean)}</p>
+             * <p>{@link AbstractChannel.AbstractUnsafe#deregister(io.netty.channel.ChannelPromise, boolean)}</p>
+             * <p>{@link AbstractNioChannel#doDeregister()}</p>真正执行cancel key
+             */
             ch.unsafe().close(ch.unsafe().voidPromise());
         }
     }

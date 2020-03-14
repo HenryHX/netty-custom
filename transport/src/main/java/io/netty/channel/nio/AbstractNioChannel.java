@@ -93,10 +93,13 @@ public abstract class AbstractNioChannel extends AbstractChannel {
              * 一般用non-block配合Selector多路复用
              * 可以参考具体的实现,{@link java.nio.channels.spi.AbstractSelectableChannel#configureBlocking}
              * <p></p>
-             * SelectableChannel 在设计时,是可以处于"阻塞"或"非阻塞"两种模式下(configureBlocking方法设定).在"阻塞"模式下,每个I/O操作完成之前,都会阻塞其他的IO操作(参见 Channels.write/read,read使用readLock,write使用writeLock同步.).
+             * SelectableChannel 在设计时,是可以处于"阻塞"或"非阻塞"两种模式下(configureBlocking方法设定).
+             * 在"阻塞"模式下,每个I/O操作完成之前,都会阻塞其他的IO操作(参见 Channels.write/read,read使用readLock,write使用writeLock同步.).
              * <p>
-             * 在"非阻塞"模式 下,永远不会阻塞IO操作,其将会使用Selector作为异步支持.即任何write和read将不阻塞,可能会立即返回.新创建的 SeletableChannel总是处于阻塞模式,
-             * 如果需要使用selector多路复用,那么必须使用非阻塞模式(API级别控制).当向某个Selector注册时,此Channel必须处于noblocking模式,且此后模式不可改变,再修改为blocking模式会报错
+             * 在"非阻塞"模式 下,永远不会阻塞IO操作,其将会使用Selector作为异步支持.
+             *      即任何write和read将不阻塞,可能会立即返回.新创建的 SeletableChannel总是处于阻塞模式,
+             * 如果需要使用selector多路复用,那么必须使用非阻塞模式(API级别控制).
+             * 当向某个Selector注册时,此Channel必须处于noblocking模式,且此后模式不可改变,再修改为blocking模式会报错
              * 直到selectionKey销毁.
              */
             ch.configureBlocking(false);
@@ -297,7 +300,10 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                             @Override
                             public void run() {
                                 /**
-                                 * 如果延迟时间范围内，连接成功，则调用{@link AbstractNioUnsafe#finishConnect()}将connectPromise设置为null，此时不会关闭channel，否则关闭
+                                 * 如果延迟时间范围内，连接成功，
+                                 *
+                                 * 则调用{@link AbstractNioUnsafe#finishConnect()}设置connectPromise的值，同时取消connectTimeoutFuture
+                                 * 此时不会关闭channel，否则关闭
                                  */
                                 ChannelPromise connectPromise = AbstractNioChannel.this.connectPromise;
                                 ConnectTimeoutException cause =
